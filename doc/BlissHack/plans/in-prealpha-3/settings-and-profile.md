@@ -2,9 +2,16 @@
 
 ## 1. 文档状态
 
-本文是 prealpha-3 阶段二实现前的强制设计评审。当前状态为**等待用户确认**。
-用户确认第 12 节之前，不实现配置持久化、Settings 页面或运行时
-`.nethackrc` 写入。
+本文是 prealpha-3 阶段二的设计评审和分步实施计划。用户于 2026-09-06
+确认开始分步实施，并补充以下要求：
+
+- 游戏处于主命令等待状态时，Esc 打开 BlissHack 暂停界面。
+- 暂停界面提供 Resume、Settings、Save and Exit。
+- 游戏内可以修改 BlissHack 界面配置。
+- 受支持的 NetHack 配置应当能够在图形界面和原生命令之间双向同步。
+
+实现仍按本文第 11 节逐步验收；不能因为开始实施而绕过其中的 shim、WASM 和
+浏览器测试门禁。
 
 本文中的结论来自当前仓库的 NetHack 5.0 源码、已提交 Emscripten 运行时和
 prealpha-2 module 生命周期。它回答的不只是“配置项放在哪里”，还包括以下
@@ -126,26 +133,79 @@ time
 
 除本文件定义的行外不生成注释、任意指令或用户文本。
 
-## 4. 游戏内配置变化
+## 4. 游戏内暂停、Settings 和同步
 
-NetHack 的 `O`/`#optionsfull` 可以在游戏内修改允许动态修改的选项，
-`#saveoptions` 还可以覆盖当前运行时 `.nethackrc`。这些变化**不同步回**
-BlissHack 个人配置，原因如下：
+### 4.1 暂停界面
 
-1. 当前 shim 没有可靠事件通知 React 哪个选项在何时变化。
-2. 从 C 内存或任意 rc 文本反向解析会建立计划明确排除的通用配置解析器。
-3. 同步回个人配置会让同一字段同时由 Settings 和游戏内菜单写入。
-4. 当前 `.nethackrc` 是 module 私有派生文件；下一 module 会重新生成它。
+NetHack 是回合制程序。等待主命令时，核心已经通过 Asyncify 停在
+`shim_nhgetch()` 或 `shim_nh_poskey()`，因此不需要新的暂停线程或计时器。
+React 截获 Esc 且不完成当前输入 Promise，就能保持核心暂停。
 
-因此，游戏内变化遵循 NetHack 自己的存档规则：
+暂停界面是 modal，包含：
 
-- 写入 `struct flag` 的持久选项会随当前游戏存档保存和恢复。
-- `number_pad` 位于非持久的 `iflags`，下次 module 仍从个人配置读取。
-- `#saveoptions` 写出的文件只影响当前 module，不能改变个人配置。
-- Settings 只在没有活动 session 时可用，不从外部修改运行中的游戏。
+- `Resume`：关闭 modal，继续等待原来的输入，不向 NetHack 发送字符。
+- `Settings`：在同一暂停层进入 Settings，不创建 module，不调用 `main()`。
+- `Save and Exit`：关闭暂停层并向原输入请求发送 ASCII `S`，完整复用
+  NetHack 的确认、保存、退出和 IDBFS flush 流程。
 
-问题 3 的含义是：要决定 NetHack 内部修改是否成为新的配置权威来源。建议答案
-是“不需要，也不允许自动同步回浏览器个人配置”。
+不能仅根据“当前有 key/position input request”判断是否可以暂停。
+`nh_poskey()` 也用于地图位置选择。NetHack 已用
+`program_state.input_state == commandInp` 标记主命令输入；shim 需要把该状态
+作为窄事件通知 React：
+
+- `commandInp`：Esc 打开暂停界面，不发送给核心。
+- `getposInp`、`getdirInp` 或 `otherInp`：Esc 保持 NetHack 原生取消行为。
+- 已有 menu、text、line、yn 或 message 交互时：Esc 交给现有 modal。
+
+### 4.2 为什么现有回调不足
+
+NetHack 的 `preference_update()` 只通知窗口端口已经声明支持的 wincap 配置，
+并且只传配置名，不传新值。它不能覆盖 `autopickup`、`safe_pet` 等普通游戏
+配置，也不能可靠获知 `number_pad` 的准确模式。
+
+React 也不能在 Asyncify 等待输入时额外 `ccall()` 进入 WASM。这样会重入尚未
+返回的 C 调用栈，是项目明确禁止的路径。
+
+因此双向同步需要在 `win/shim/winshim.c` 中增加一个限定为首版字段的协议，
+而不是解析菜单文字或模拟一串 `O` 菜单按键。
+
+### 4.3 建议的 shim 协议
+
+协议只处理本文件列出的 NetHack 配置，不接受任意 rc 指令：
+
+1. shim 在安全的主命令边界调用 `get_option_value()`，取得七个可在游戏内修改
+   的选项规范值。
+2. shim 把初始快照和后续变化通知 TypeScript。
+3. 图形 Settings 提交修改时，TypeScript 只把经过类型校验并由生成器产生的
+   选项更新放入待处理队列。
+4. shim 在下一个安全主命令边界取得待处理更新，并在原有 C 调用栈内调用
+   `parseoptions()`；不从 JavaScript 反向调用 C。
+5. shim 再读取实际值并回传，React 以核心确认后的值更新界面。
+
+如果 Settings 在核心已经等待主命令时提交，桥接层可以用一个 shim 私有控制值
+唤醒本次等待；该控制值不能作为普通 NetHack 按键返回。shim 消费控制值、应用
+配置后继续等待真实命令，因此不消耗游戏回合。
+
+这项修改只应涉及 shim 和 TypeScript 桥接，不修改 `src/options.c` 的通用
+选项语义。修改仍须遵守上游文件标记、shim 接口记录、原生测试和 WASM 三件套
+同步更新要求。
+
+### 4.4 双向同步规则
+
+- 继续存档后收到的第一份核心快照只建立“当前游戏值”，不覆盖个人默认配置。
+  否则打开一个旧存档会意外改写所有新游戏的默认值。
+- 玩家此后通过 `O`、`#optionsfull`、`@` 等原生命令改变受支持字段时，下一份
+  核心快照同时更新图形控件和个人默认配置。
+- 玩家通过游戏内 Settings 修改时，先由核心应用并回报实际值，再把已确认值
+  保存为个人默认配置。
+- `tutorial` 不能在游戏中改变当前流程；游戏内 Settings 可以修改它，但只标记
+  为“下次新游戏生效”。
+- `#saveoptions` 写出的 `.nethackrc` 仍是当前 module 的临时派生文件。配置
+  同步依赖核心实际值快照，不依赖读取或解析该文件。
+
+问题 3 的含义是：需要同时区分当前游戏实际值、未来游戏默认值和运行时 rc。
+本方案允许玩家的主动修改在当前游戏与未来默认值之间同步，但不会让恢复存档
+时载入的旧值静默覆盖个人配置。
 
 ## 5. 首版界面配置
 
@@ -246,14 +306,14 @@ NetHack 5.0 的实际行为有三种：
 2. rc 中有 `OPTIONS=tutorial`：不询问，直接进入教程。
 3. rc 中有 `OPTIONS=!tutorial`：不询问，直接进入普通游戏。
 
-这与“所有布尔值都使用开关”的计划存在表达差异。建议首版开关命名为
+这与“所有布尔值都使用开关”的计划存在表达差异。首版开关命名为
 “Offer tutorial for new games”：
 
 - `true`：不生成 tutorial 行，保留 NetHack 原生询问。
 - `false`：生成 `OPTIONS=!tutorial`，跳过询问和教程。
 
-该方案保留当前默认体验，但不提供“每次强制进入教程”。另一种方案是三项选择
-`ask / always / never`，它更完整，但不再是布尔开关。此项需要用户确认。
+该方案保留当前默认体验，但不提供“每次强制进入教程”。三项选择
+`ask / always / never` 留作未来扩展。
 
 ## 7. 生效时间
 
@@ -261,19 +321,20 @@ NetHack 5.0 的实际行为有三种：
 
 | 配置 | 当前运行中的游戏 | 下一次新游戏 | 下一次继续存档 |
 |------|------------------|--------------|----------------|
-| 三项界面配置 | Settings 不可进入 | Apply 后立即用于 Home；游戏 UI 继续使用 | 同左 |
-| `tutorial` | 不修改 | 生效 | 不重新开始教程，实际无作用 |
-| `number_pad` | 不修改 | 生效 | 生效；它属于不写入存档的 `iflags` |
-| 其余六项 NetHack 配置 | 不修改 | 生效 | 存档中的旧值覆盖 rc 新值 |
+| 三项界面配置 | 游戏内 Apply 后立即生效 | 使用已保存值 | 使用已保存值 |
+| `tutorial` | 只修改未来默认值 | 生效 | 不重新开始教程，实际无作用 |
+| `number_pad` | 在安全命令边界生效 | 生效 | 启动时生效；它属于不写入存档的 `iflags` |
+| 其余六项 NetHack 配置 | 在安全命令边界生效，并可随当前存档保存 | 生效 | 初始值来自存档，之后可在游戏内修改 |
 
 `autopickup`、`pickup_types`、`safe_pet`、`sortpack`、`showexp` 和 `time`
 都位于会写入存档的 `struct flag`。恢复流程先读取 rc，随后把保存的整个
-`flags` 恢复进内存。因此玩家修改个人配置后继续旧存档，这六项仍保持该存档
-上次保存时的值；修改只保证影响新游戏。
+`flags` 恢复进内存。因此仅在 Home 修改个人配置后继续旧存档，这六项最初仍
+保持该存档上次保存时的值。进入游戏后，玩家可以在暂停界面的 Settings 或
+NetHack 原生选项命令中修改它们。
 
 Settings 必须在这六项旁显示“New games; existing saves keep their saved
-value”，不能笼统显示“Next game”。`number_pad` 显示“Next game session，
-including continued saves”。
+value until changed in game”，不能笼统显示“Next game”。游戏内 Settings
+显示核心回报的当前值；Home Settings 显示个人默认值。
 
 问题 7 的含义是：生效时机不仅取决于何时写 `.nethackrc`，还取决于 NetHack
 恢复存档之后是否覆盖该字段。
@@ -303,13 +364,30 @@ Apply 按以下顺序执行：
 问题 5 的含义是：如果两组配置分两次写入，第二次失败会产生用户无法判断的
 混合状态。建议使用一个记录和一次替换，把原子边界放在个人配置上。
 
-### 8.2 Import 和 Restore Defaults
+### 8.2 游戏内 Apply 的边界
+
+游戏内 Apply 还涉及当前 C 内存，浏览器存储与 NetHack 核心之间不存在共同
+事务。流程为：
+
+1. 校验完整 draft。
+2. 由 shim 在安全命令边界应用可动态修改的 NetHack 字段。
+3. 等待核心回报规范化后的实际值。
+4. 把实际值和界面配置组成完整个人配置，执行一次 `setItem()`。
+5. 持久化成功后发布界面配置并关闭 Settings。
+
+如果核心拒绝设置，个人配置和界面配置都不提交。如果核心应用成功但
+localStorage 随后失败，当前游戏值已经改变且不能假装回滚；界面必须明确提示
+“当前游戏已改变，但未来默认值未保存”。这是跨 WASM 和浏览器存储边界无法
+消除的部分成功，不得报告为完整成功。
+
+### 8.3 Import 和 Restore Defaults
 
 导入和恢复默认值复用同一个完整记录提交函数：
 
 - 导入先完成全部校验和差异预览，再由玩家确认并一次提交。
 - Restore Defaults 先确认，再提交完整默认记录。
-- 任一操作失败时不发布部分界面变化，也不改变 NetHack 配置。
+- Home 中任一操作失败时不发布部分界面变化，也不改变 NetHack 配置。
+- 游戏中导入和恢复默认值复用 8.2 的当前核心应用和结果报告规则。
 
 ## 9. 持久记录与个人配置文件
 
@@ -443,57 +521,137 @@ rc 由封闭类型生成，正常情况下不存在用户可制造的语法错�
 完整默认值；由本程序生成却被核心拒绝的 rc 不能静默忽略，否则玩家不知道
 实际运行配置。
 
-## 11. 实现边界和验证
+## 11. 阶段二分步实施计划
 
-确认设计后，阶段二建议拆成以下职责：
+每一步都必须保持应用可构建、相关测试通过并形成独立审核点。除步骤五外不修改
+上游 NetHack 文件或重新生成 WASM。
 
-```text
-profile schema/validator
-  -> 默认值、规范化、导入导出结构
+### 步骤一：配置领域模型和持久化
 
-profile store
-  -> 单 localStorage key 的读取和原子替换
+实现与 UI 无关的配置基础：
 
-NetHack rc generator
-  -> 类型化 nethack 配置到固定文本
+- `InterfaceSettingsV1`、`NetHackSettingsV1` 和完整 profile 类型。
+- 默认值、规范化、严格校验和不可变复制。
+- `blisshack.profile.v1` 的读取与单次原子替换。
+- localStorage 缺失、抛错、损坏和不支持 schema 的恢复结果。
+- NetHack rc 确定性生成器。
 
-settings draft/controller
-  -> Apply、Cancel、Restore、Import、Export
+验收：
 
-app state
-  -> Home 与 Settings 导航，保留 prepared module
+- 全部字段、枚举、缺失字段和非法输入有单元测试。
+- rc 输出顺序、布尔语法、pickup 符号和 `number_pad` 六种值有快照或精确断言。
+- 本步不改现有页面和 session 生命周期。
 
-session start gate
-  -> main() 前把最新 rc 写入当前 module
-```
+### 步骤二：配置上下文和界面设置生效
 
-至少验证：
+在 React 顶层建立唯一 profile 状态，接通三项界面配置：
 
-- 默认、缺失字段、损坏记录和 localStorage 抛错。
-- 每个枚举、每种 `number_pad` 模式和全部 pickup 类别。
-- rc 行顺序、UTF-8/LF、无未知指令。
-- Apply、Import 和 Restore 的失败不产生部分更新。
-- 打开、取消和应用 Settings 都不创建 module 或调用 `main()`。
-- Settings 后启动新游戏读取新 rc。
-- 继续存档时验证六项 persistent 配置保留存档值、`number_pad` 读取新值。
-- `tutorial=true` 保留询问、`tutorial=false` 跳过询问。
+- 终端字号通过固定 class 切换。
+- 消息区域显示 3 或 5 行。
+- 地图在玩家位置变化后按配置决定是否跟随。
+- 配置不可用 warning 进入可测试状态，不写入诊断日志敏感内容。
 
-## 12. 请求用户确认
+验收：
 
-请确认或修改以下决定；全部确认后才能开始阶段二实现：
+- 刷新后恢复配置。
+- 修改一个字段不改变其他字段。
+- 三种字号和两种消息高度在桌面宽度下不重叠。
+
+### 步骤三：Home Settings 和个人配置文件
+
+增加 Home 到独立 Settings screen 的状态和 UI：
+
+- `Interface`、`NetHack`、`Profile` 三个区段。
+- Apply、Cancel、Restore Defaults、Export Profile、Import Profile。
+- 离开未保存表单时确认。
+- 导入差异预览和确认。
+- Home 与 Settings 往返时保留 prepared module。
+
+验收：
+
+- 打开、取消、Apply 和导入导出都不创建 module、不调用 `main()`。
+- Apply 失败和导入失败不产生部分更新。
+- `.bhprofile` 导出后可在默认状态重新导入并得到相同配置。
+- 键盘焦点、标签和 modal 焦点恢复通过组件测试。
+
+### 步骤四：启动时安装 `.nethackrc`
+
+在 session 启动门禁接入运行时文件：
+
+- `main()` 前将最新配置原子写入 `/home/web_user/.nethackrc`。
+- Home Settings 修改后复用当前 prepared module。
+- 写入失败时不调用 `main()`。
+- 新游戏和继续存档分别验证第 7 节的生效规则。
+
+验收：
+
+- 真实 WASM 读取生成文件。
+- `tutorial`、`number_pad` 和至少一个持久选项有端到端证明。
+- 现有 New Game、Continue、保存和恢复测试无回归。
+
+### 步骤五：一次性补全游戏内 shim 协议
+
+集中完成所有需要重新构建 WASM 的工作：
+
+- 从 `program_state.input_state` 向前端报告是否处于 `commandInp`。
+- 增加限定字段的待应用配置通道，不接受任意 rc 文本。
+- 在安全命令边界调用 `parseoptions()`。
+- 用 `get_option_value()` 发布七项动态配置的规范快照和变化。
+- 更新 shim 接口文档、上游修改清单及 C/WASM 测试。
+- 使用固定工具链重新生成并一起提交
+  `nethack.js`、`nethack.wasm` 和 `nethack-runtime.json`。
+
+验收：
+
+- Asyncify 等待期间没有外部 `ccall()` 和重入。
+- 应用配置不消耗回合、不产生普通按键。
+- `O`、`#optionsfull` 和 `@` 造成的受支持变化能被观察。
+- 非法字段和值在进入 `parseoptions()` 前被拒绝。
+
+### 步骤六：暂停界面和游戏内 Settings
+
+在 Game screen 增加暂停状态和入口：
+
+- 仅 `commandInp` 时由 Esc 打开暂停 modal。
+- Resume 恢复同一个待处理输入。
+- Settings 复用步骤三的表单组件，但显示当前核心实际值。
+- Save and Exit 向原输入发送 `S`，复用原生确认和退出流程。
+- 原生命令变化同步图形控件；玩家主动变化同步个人默认配置。
+
+验收：
+
+- Esc 在主命令处不进入核心；在方向、位置、菜单和确认提示中保持原生含义。
+- 暂停、恢复和打开 Settings 都不创建新 session 或 module。
+- Save and Exit 与键盘 `S` 产生相同确认、保存、flush 和返回 Home 流程。
+- 恢复旧存档的初始快照不会覆盖个人默认值。
+- 图形修改和原生命令修改双向同步。
+
+### 步骤七：阶段二综合验收
+
+执行并记录：
+
+- 全部前端单元测试、lint 和生产构建。
+- WASM 集成测试。
+- Chromium Settings、暂停、同步、导入导出和保存退出流程。
+- 键盘与焦点检查。
+- `git diff --check`。
+
+同时更新 `prealpha-3.md` 的阶段二结果；只有上述项目全部通过后才开始阶段三。
+
+## 12. 已确认的设计决定
 
 1. **配置来源**：采用单个 `localStorage` 记录
-   `blisshack.profile.v1`，`.nethackrc` 每个 module 启动前生成，不新增配置
+   `blisshack.profile.v1`；`.nethackrc` 每个 module 启动前生成，不新增配置
    IDBFS。
-2. **游戏内修改**：`O` 和 `#saveoptions` 的变化不反向同步到个人配置。
-3. **界面默认值**：`medium`、5 行消息、自动跟随玩家。
-4. **教程语义（建议）**：保留布尔开关；true 表示新游戏时询问，false 表示
-   跳过教程。Settings 不提供“总是直接进入教程”。
-5. **已有存档语义**：明确告知玩家六项 persistent 配置只影响新游戏；
-   Settings 不修改或重写已有存档。
-6. **提交原子性**：个人配置以单 key 一次替换；运行时 rc 是开始游戏前生成的
-   派生产物，不纳入 localStorage 提交事务。
-7. **损坏恢复**：损坏记录整份回退默认值但暂不自动覆盖；持久化不可用时不提供
-   静默的仅本页 Apply。
-8. **个人配置格式**：采用第 9 节完整 JSON 结构、1 MiB 上限和严格校验规则。
-
+2. **游戏内入口**：主命令等待时 Esc 打开暂停界面，并从其中进入 Settings。
+3. **游戏内同步**：玩家主动进行的图形修改和原生命令修改双向同步；恢复存档
+   的初始值不自动覆盖个人默认配置。
+4. **界面默认值**：`medium`、5 行消息、自动跟随玩家。
+5. **教程语义**：保留布尔开关；true 表示新游戏时询问，false 表示跳过教程。
+6. **已有存档语义**：六项 persistent 配置最初使用存档值，进入游戏后允许
+   玩家修改；`number_pad` 每个 session 从个人配置读取。
+7. **提交原子性**：个人配置以单 key 一次替换；当前 C 内存是独立运行时边界，
+   跨边界部分失败必须准确报告。
+8. **损坏恢复**：损坏记录整份回退默认值但不自动覆盖；持久化不可用时不静默
+   声称保存成功。
+9. **个人配置格式**：采用第 9 节完整 JSON 结构、1 MiB 上限和严格校验规则。
