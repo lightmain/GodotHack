@@ -21,6 +21,7 @@ import {
   isWaitingForInput,
   normalizePlayerNameInput,
   preparePlayerNamePrompt,
+  queueRuntimeSettings,
   resetBridgeState,
   sendKey,
   sendPosition,
@@ -35,6 +36,8 @@ import {
   validateSaveMetadata,
   type EmscriptenModule,
 } from "./nethack-bridge";
+import { createDefaultProfile } from "./settings/profile";
+import { encodeRuntimeSettings } from "./settings/runtime-settings-protocol";
 
 interface MockModuleHarness {
   module: EmscriptenModule;
@@ -541,6 +544,32 @@ describe("key, position, and prompt input", () => {
     expect(harness.readI32(0x304)).toBe(-1);
   });
 
+  it("reports command input only while the matching key request is pending", async () => {
+    const command = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      1,
+    );
+    expect(getSnapshot().commandInput).toBe(true);
+
+    sendKey(27);
+    await expect(command).resolves.toBe(27);
+    expect(getSnapshot().commandInput).toBe(false);
+
+    const direction = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      3,
+    );
+    expect(getSnapshot().commandInput).toBe(false);
+    sendKey("h".charCodeAt(0));
+    await expect(direction).resolves.toBe("h".charCodeAt(0));
+  });
+
   it("buffers a short burst typed before the core requests its next keys", async () => {
     const first = shimCallback("shim_nhgetch");
     sendKey("l".charCodeAt(0));
@@ -637,6 +666,82 @@ describe("key, position, and prompt input", () => {
     expect(getSnapshot().numberPad).toBe(true);
     await shimCallback("shim_number_pad", 0);
     expect(getSnapshot().numberPad).toBe(false);
+  });
+});
+
+describe("runtime settings synchronization", () => {
+  it("publishes snapshots and returns one queued update at a command boundary", async () => {
+    const initial = createDefaultProfile().nethack;
+    const initialPayload = encodeRuntimeSettings(initial, false);
+
+    await expect(
+      shimCallback("shim_settings_sync", initialPayload),
+    ).resolves.toBe(0);
+    expect(getSnapshot().runtimeSettings).toMatchObject({
+      autopickup: true,
+      numberPad: 0,
+      showTime: false,
+    });
+    expect(getSnapshot().runtimeSettingsStatus).toBe("idle");
+
+    const requested = createDefaultProfile().nethack;
+    requested.autopickup = false;
+    requested.numberPad = -1;
+    requested.showTime = true;
+    queueRuntimeSettings(requested);
+    expect(getSnapshot().runtimeSettingsStatus).toBe("pending");
+
+    await expect(
+      shimCallback("shim_settings_sync", initialPayload),
+    ).resolves.toBe(encodeRuntimeSettings(requested, true));
+    expect(getSnapshot().runtimeSettingsStatus).toBe("pending");
+
+    await shimCallback(
+      "shim_settings_result",
+      1,
+      encodeRuntimeSettings(requested, false),
+    );
+    expect(getSnapshot().runtimeSettings).toEqual({
+      autopickup: false,
+      pickupTypes: { mode: "all" },
+      numberPad: -1,
+      safePet: true,
+      sortpack: true,
+      showExperience: false,
+      showTime: true,
+    });
+    expect(getSnapshot().runtimeSettingsStatus).toBe("applied");
+
+    await shimCallback(
+      "shim_settings_sync",
+      encodeRuntimeSettings(requested, false),
+    );
+    expect(getSnapshot().runtimeSettingsStatus).toBe("idle");
+  });
+
+  it("turns malformed snapshots and rejected updates into runtime errors", async () => {
+    await expect(shimCallback("shim_settings_sync", 0)).resolves.toBe(0);
+    expect(getSnapshot()).toMatchObject({
+      phase: "error",
+      error: expect.stringContaining("shim_settings_sync"),
+    });
+
+    resetBridgeState();
+    const settings = createDefaultProfile().nethack;
+    queueRuntimeSettings(settings);
+    await shimCallback(
+      "shim_settings_sync",
+      encodeRuntimeSettings(settings, false),
+    );
+    await shimCallback(
+      "shim_settings_result",
+      0,
+      encodeRuntimeSettings(settings, false),
+    );
+    expect(getSnapshot()).toMatchObject({
+      phase: "error",
+      error: expect.stringContaining("rejected"),
+    });
   });
 });
 

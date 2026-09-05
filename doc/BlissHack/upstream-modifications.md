@@ -82,6 +82,26 @@ M win/shim/winshim.c
 - **目的**：在上游文件头显著记录 BlissHack 修改者、日期和修改范围。
 - **验收**：人工检查文件头、本文和 shim 接口参考三处描述一致。
 
+### 2.5 游戏内 Settings 安全边界协议
+
+- **文件**：`win/shim/winshim.c`
+- **引入提交**：本阶段提交 `feat: add runtime settings shim protocol`
+- **目的**：
+  - 在 WASM 输入回调末尾附加 `program_state.input_state`，让前端只在
+    `commandInp` 时提供暂停入口。
+  - 在 `get_nh_event()` 命令边界交换七项动态配置的版本化 32-bit 快照。
+  - 只接受经过位级校验的固定字段，并在当前 C 调用栈内使用
+    `parseoptions()` 应用，避免 Asyncify 等待期间从 React 重入 WASM。
+- **ABI 范围**：只修改 Emscripten 回调参数；原生 `libnethack.a` ABI
+  保持不变。
+- **行为依据**：
+  `doc/BlissHack/shim-interface-reference.md` 第 6.3 节。
+- **回归测试**：
+  - `frontend/src/settings/runtime-settings-protocol.test.ts`
+  - `frontend/src/nethack-bridge.test.ts`
+  - `frontend/test/integration-tests/wasm-test.mjs`
+  - Settings 与暂停相关 Playwright 流程
+
 ## 3. 上游合并检查
 
 每次从 `upstream/NetHack-5.0` 合并后必须：
