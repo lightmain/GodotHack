@@ -16,6 +16,13 @@ interface RectLike {
   height: number;
 }
 
+interface ScrollDimensions {
+  scrollWidth: number;
+  scrollHeight: number;
+  clientWidth: number;
+  clientHeight: number;
+}
+
 /**
  * Collapse one map row into adjacent text runs with equal visible styles.
  * @param row - map cells in column order.
@@ -78,6 +85,28 @@ export function mapPositionFromPoint(
 }
 
 /**
+ * Center one map coordinate within a scroll viewport and clamp both axes.
+ * @param x - NetHack map column.
+ * @param y - NetHack map row.
+ * @param dimensions - rendered map and viewport sizes.
+ * @returns target scroll offsets.
+ */
+export function mapFollowOffset(
+  x: number,
+  y: number,
+  dimensions: ScrollDimensions,
+): { left: number; top: number } {
+  const maxLeft = Math.max(0, dimensions.scrollWidth - dimensions.clientWidth);
+  const maxTop = Math.max(0, dimensions.scrollHeight - dimensions.clientHeight);
+  const cellCenterX = ((x + 0.5) / COLNO) * dimensions.scrollWidth;
+  const cellCenterY = ((y + 0.5) / ROWNO) * dimensions.scrollHeight;
+  return {
+    left: clamp(cellCenterX - dimensions.clientWidth / 2, 0, maxLeft),
+    top: clamp(cellCenterY - dimensions.clientHeight / 2, 0, maxTop),
+  };
+}
+
+/**
  * Convert a tty character code into one visible map character.
  * @param value - glyph_info.ttychar.
  * @returns one display character.
@@ -85,4 +114,8 @@ export function mapPositionFromPoint(
 function glyphCharacter(value: number): string {
   if (value < 0x20 || value > 0x10ffff) return " ";
   return String.fromCodePoint(value);
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(Math.max(value, minimum), maximum);
 }

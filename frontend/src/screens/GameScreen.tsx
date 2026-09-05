@@ -2,6 +2,7 @@ import {
   memo,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -31,8 +32,13 @@ import {
   type WindowState,
 } from "../game-state";
 import { keyboardEventToNetHackKey } from "../keyboard";
-import { buildMapRuns, mapPositionFromPoint } from "../map-rendering";
+import {
+  buildMapRuns,
+  mapFollowOffset,
+  mapPositionFromPoint,
+} from "../map-rendering";
 import { buildHitPointBar } from "../status-rendering";
+import type { InterfaceSettingsV1 } from "../settings/profile";
 import {
   dismissDisplay,
   normalizePlayerNameInput,
@@ -104,9 +110,10 @@ const AUTO_ACCELERATORS =
 
 /**
  * Render and operate the active character-mode NetHack session.
+ * @param props - active BlissHack interface settings.
  * @returns the complete game terminal.
  */
-export function GameScreen() {
+export function GameScreen({ settings }: { settings: InterfaceSettingsV1 }) {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   useEffect(() => {
@@ -136,7 +143,10 @@ export function GameScreen() {
   }, [snapshot.inputRequest, snapshot.modal, snapshot.numberPad]);
 
   return (
-    <main className="nh-shell" aria-label="BlissHack">
+    <main
+      className={`nh-shell nh-font-${settings.terminalFontSize}`}
+      aria-label="BlissHack"
+    >
       <header className="nh-header">
         <strong>BlissHack</strong>
         <span className={`nh-runtime nh-runtime-${snapshot.phase}`}>
@@ -150,8 +160,17 @@ export function GameScreen() {
         </section>
       ) : (
         <section className="nh-terminal" aria-label="NetHack terminal">
-          <MessageArea messages={snapshot.messages} />
-          <MapGrid cursor={snapshot.cursor} map={snapshot.map} />
+          <MessageArea
+            historyLines={settings.messageHistoryLines}
+            messages={snapshot.messages}
+          />
+          <MapGrid
+            clipCenter={snapshot.clipCenter}
+            cursor={snapshot.cursor}
+            followPlayer={settings.followPlayer}
+            layoutKey={`${settings.terminalFontSize}:${settings.messageHistoryLines}`}
+            map={snapshot.map}
+          />
           <StatusArea status={snapshot.status} />
           <InputArea request={snapshot.inputRequest} />
         </section>
@@ -181,13 +200,19 @@ function runtimeLabel(snapshot: GameSnapshot): string {
  * @returns message region.
  */
 const MessageArea = memo(function MessageArea({
+  historyLines,
   messages: allMessages,
 }: {
+  historyLines: InterfaceSettingsV1["messageHistoryLines"];
   messages: TextLine[];
 }) {
-  const messages = allMessages.slice(-3);
+  const messages = allMessages.slice(-historyLines);
   return (
-    <section className="nh-messages" aria-live="polite" aria-label="Messages">
+    <section
+      className={`nh-messages nh-messages-${historyLines}`}
+      aria-live="polite"
+      aria-label="Messages"
+    >
       {messages.length === 0
         ? <div className="nh-message">&nbsp;</div>
         : messages.map((line, index) => (
@@ -208,12 +233,38 @@ const MessageArea = memo(function MessageArea({
  * @returns the 80 by 21 map grid.
  */
 const MapGrid = memo(function MapGrid({
+  clipCenter,
   cursor,
+  followPlayer,
+  layoutKey,
   map,
 }: {
+  clipCenter: GameSnapshot["clipCenter"];
   cursor: GameSnapshot["cursor"];
+  followPlayer: boolean;
+  layoutKey: string;
   map: MapCell[][];
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const viewport = scrollRef.current;
+    if (!viewport || !followPlayer || !clipCenter) return;
+
+    function centerPlayer(): void {
+      if (!viewport || !clipCenter) return;
+      const offset = mapFollowOffset(clipCenter.x, clipCenter.y, viewport);
+      viewport.scrollLeft = offset.left;
+      viewport.scrollTop = offset.top;
+    }
+
+    centerPlayer();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(centerPlayer);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [clipCenter, followPlayer, layoutKey]);
+
   /**
    * Submit a primary or secondary map click while nh_poskey is pending.
    * @param event - delegated mouse event from a map cell.
@@ -239,7 +290,7 @@ const MapGrid = memo(function MapGrid({
   }
 
   return (
-    <div className="nh-map-scroll">
+    <div className="nh-map-scroll" ref={scrollRef}>
       <div
         className="nh-map"
         aria-label="Dungeon map"

@@ -18,6 +18,7 @@ import { FatalScreen } from "./screens/FatalScreen";
 import { HomeScreen } from "./screens/HomeScreen";
 import { GameScreen } from "./screens/GameScreen";
 import { createSessionManager } from "./session/session-manager";
+import { useProfileSettings } from "./settings/profile-context";
 import type {
   RawSaveImportRequest,
   SaveListEntry,
@@ -33,6 +34,7 @@ function App({
   diagnostics?: DiagnosticLog;
 }) {
   const [state, dispatch] = useReducer(appReducer, initialAppState);
+  const { loadStatus, profile } = useProfileSettings();
   const sessionManager = useMemo(
     () => createSessionManager({
       diagnostics,
@@ -59,6 +61,19 @@ function App({
       void sessionManager.dispose();
     };
   }, [diagnostics, sessionManager]);
+
+  useEffect(() => {
+    diagnostics.record({
+      level: loadStatus === "invalid"
+          || loadStatus === "unsupported-schema"
+          || loadStatus === "unavailable"
+        ? "warning"
+        : "info",
+      area: "app",
+      event: `settings.profile_${loadStatus.replace("-", "_")}`,
+      detail: { storageAvailable: loadStatus !== "unavailable" },
+    });
+  }, [diagnostics, loadStatus]);
 
   /**
    * Start one session and leave startup failures to the reducer event.
@@ -175,7 +190,7 @@ function App({
     );
   }
 
-  return <GameScreen />;
+  return <GameScreen settings={profile.interface} />;
 }
 
 /** Trigger one browser download and release its temporary object URL. */

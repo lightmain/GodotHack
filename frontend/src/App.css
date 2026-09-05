@@ -596,6 +596,7 @@
 }
 
 .nh-shell {
+  height: 100svh;
   min-height: 100svh;
   display: flex;
   flex-direction: column;
@@ -604,6 +605,18 @@
   font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 14px;
   line-height: 1.15;
+}
+
+.nh-shell.nh-font-small {
+  font-size: 12px;
+}
+
+.nh-shell.nh-font-medium {
+  font-size: 14px;
+}
+
+.nh-shell.nh-font-large {
+  font-size: 16px;
 }
 
 .nh-header {
@@ -653,10 +666,17 @@
 }
 
 .nh-messages {
-  height: calc(3.45em + 8px);
   padding: 4px 0;
   overflow: hidden;
   color: #f1f1eb;
+}
+
+.nh-messages-3 {
+  height: calc(3.45em + 8px);
+}
+
+.nh-messages-5 {
+  height: calc(5.75em + 8px);
 }
 
 .nh-message,
