@@ -1902,8 +1902,9 @@ bit 10 至 24 编码 15 个允许的 pickup class，bit 28 至 30 是协议版�
 C 侧先拒绝未知位、错误版本、非法 `number_pad`、冲突或空的 pickup 选择，
 再在当前 C 调用栈内通过 `parseoptions()` 应用完整更新。应用后重新调用
 `get_option_value()` 生成权威快照；若结果不一致，则回滚到更新前快照并报告
-失败。React 不会在 Asyncify 等待输入期间调用 `ccall()`，也不能通过该通道
-传入任意 `.nethackrc` 文本。
+失败。调用使用无交互消息的解析上下文，并显式补做状态栏和背包刷新，避免一组
+设置更新产生 `--More--`。完成后恢复原有解析上下文。React 不会在 Asyncify
+等待输入期间调用 `ccall()`，也不能通过该通道传入任意 `.nethackrc` 文本。
 
 真实 WASM 集成测试覆盖：
 

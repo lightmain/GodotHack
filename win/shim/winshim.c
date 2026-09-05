@@ -274,11 +274,17 @@ shim_apply_settings(unsigned int payload)
     char opts[BUFSZ], *op;
     unsigned int pickup;
     int i, numpad;
+    boolean applied = TRUE, old_opt_initial = go.opt_initial,
+            old_opt_from_file = go.opt_from_file,
+            old_sortpack = flags.sortpack,
+            old_showexp = flags.showexp, old_time = flags.time;
 
 #define SHIM_APPLY_BOOLEAN(name, bit) \
     Sprintf(opts, "%s" name, (payload & (bit)) ? "" : "!"); \
-    if (!parseoptions(opts, FALSE, FALSE)) \
-        return FALSE
+    if (!parseoptions(opts, TRUE, FALSE)) { \
+        applied = FALSE; \
+        goto shim_apply_done; \
+    }
 
     if (!shim_settings_payload_valid(payload, FALSE))
         return FALSE;
@@ -296,20 +302,34 @@ shim_apply_settings(unsigned int payload)
                 *op++ = shim_pickup_symbols[i];
         *op = '\0';
     }
-    if (!parseoptions(opts, FALSE, FALSE))
-        return FALSE;
+    if (!parseoptions(opts, TRUE, FALSE)) {
+        applied = FALSE;
+        goto shim_apply_done;
+    }
 
     numpad = (payload & SHIM_SETTINGS_NUMPAD_MASK)
              >> SHIM_SETTINGS_NUMPAD_SHIFT;
     Sprintf(opts, "number_pad:%d", shim_numpad_modes[numpad]);
-    if (!parseoptions(opts, FALSE, FALSE))
-        return FALSE;
+    if (!parseoptions(opts, TRUE, FALSE)) {
+        applied = FALSE;
+        goto shim_apply_done;
+    }
     SHIM_APPLY_BOOLEAN("safe_pet", SHIM_SETTINGS_SAFE_PET);
     SHIM_APPLY_BOOLEAN("sortpack", SHIM_SETTINGS_SORTPACK);
     SHIM_APPLY_BOOLEAN("showexp", SHIM_SETTINGS_SHOWEXP);
     SHIM_APPLY_BOOLEAN("time", SHIM_SETTINGS_TIME);
+shim_apply_done:
 #undef SHIM_APPLY_BOOLEAN
-    return TRUE;
+    go.opt_initial = old_opt_initial;
+    go.opt_from_file = old_opt_from_file;
+    if (applied && (flags.showexp != old_showexp || flags.time != old_time)) {
+        if (VIA_WINDOWPORT())
+            status_initialize(REASSESS_ONLY);
+        disp.botl = TRUE;
+    }
+    if (applied && flags.sortpack != old_sortpack)
+        update_inventory();
+    return applied;
 }
 
 /* Publish a snapshot and retrieve at most one pending TypeScript update. */

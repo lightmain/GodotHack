@@ -17,11 +17,14 @@ describe("GameScreen interface settings", () => {
   it.each(["small", "medium", "large"] as const)(
     "applies the %s terminal font class",
     (terminalFontSize) => {
-      const settings = createDefaultProfile().interface;
-      settings.terminalFontSize = terminalFontSize;
+      const profile = createDefaultProfile();
+      profile.interface.terminalFontSize = terminalFontSize;
 
       const html = renderToStaticMarkup(createElement(GameScreen, {
-        settings,
+        loadStatus: "loaded",
+        moduleId: "module-1",
+        onApplyProfile: (candidate) => candidate,
+        profile,
       }));
 
       expect(html).toContain(`nh-font-${terminalFontSize}`);
@@ -36,11 +39,14 @@ describe("GameScreen interface settings", () => {
       for (let index = 1; index <= 6; index += 1) {
         appendWindowText(messageWindow, ATR_NONE, `message-${index}`);
       }
-      const settings = createDefaultProfile().interface;
-      settings.messageHistoryLines = messageHistoryLines;
+      const profile = createDefaultProfile();
+      profile.interface.messageHistoryLines = messageHistoryLines;
 
       const html = renderToStaticMarkup(createElement(GameScreen, {
-        settings,
+        loadStatus: "loaded",
+        moduleId: "module-1",
+        onApplyProfile: (candidate) => candidate,
+        profile,
       }));
 
       expect(html).toContain(`nh-messages-${messageHistoryLines}`);

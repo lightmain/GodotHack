@@ -76,4 +76,21 @@ describe("SettingsScreen", () => {
       expect(renderSettings(status)).toMatch(message);
     },
   );
+
+  it("reuses the settings fields without profile transfer actions in game", () => {
+    const html = renderToStaticMarkup(createElement(SettingsScreen, {
+      context: "game",
+      loadStatus: "loaded",
+      moduleId: "module-1",
+      onApply: (profile) => profile,
+      onBack: vi.fn(),
+      profile: createDefaultProfile(),
+    }));
+
+    expect(html).toContain("Current game and future defaults");
+    expect(html).toContain('aria-label="Back to Pause"');
+    expect(html).not.toContain("<h2 id=\"profile-title\">Profile</h2>");
+    expect(html).not.toContain("Import Profile");
+    expect(html).not.toContain("Export Profile");
+  });
 });

@@ -29,6 +29,7 @@ import type { ProfileLoadStatus } from "../settings/profile-store";
 import { PRODUCT_VERSION } from "../version";
 
 interface SettingsScreenProps {
+  context?: "home" | "game";
   loadStatus: ProfileLoadStatus;
   moduleId: string;
   onApply(profile: BlissHackProfileV1): BlissHackProfileV1;
@@ -83,6 +84,7 @@ const NUMBER_PAD_OPTIONS: ReadonlyArray<{
  * @returns the Home Settings screen.
  */
 export function SettingsScreen({
+  context = "home",
   loadStatus,
   moduleId,
   onApply,
@@ -97,6 +99,7 @@ export function SettingsScreen({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dirty = JSON.stringify(draft) !== JSON.stringify(profile);
   const storageAvailable = loadStatus !== "unavailable";
+  const isGameSettings = context === "game";
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -110,6 +113,25 @@ export function SettingsScreen({
     window.addEventListener("beforeunload", warnBeforeUnload);
     return () => window.removeEventListener("beforeunload", warnBeforeUnload);
   }, [dirty]);
+
+  useEffect(() => {
+    /** Return or dismiss the active confirmation without leaking Esc to the game. */
+    function handleEscape(event: KeyboardEvent): void {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (importPreview) {
+        setImportPreview(null);
+      } else if (confirmation) {
+        setConfirmation(null);
+      } else {
+        requestBack();
+      }
+    }
+
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  });
 
   /** Save one complete candidate and retain the draft if persistence fails. */
   function commit(candidate: BlissHackProfileV1, message: string): boolean {
@@ -194,16 +216,16 @@ export function SettingsScreen({
 
   return (
     <main
-      className="settings-screen"
+      className={`settings-screen${isGameSettings ? " settings-screen-game" : ""}`}
       data-module-id={moduleId}
       aria-labelledby="settings-title"
     >
       <header className="settings-header">
         <button
-          aria-label="Back to Home"
+          aria-label={isGameSettings ? "Back to Pause" : "Back to Home"}
           className="settings-back"
           onClick={requestBack}
-          title="Back to Home"
+          title={isGameSettings ? "Back to Pause" : "Back to Home"}
           type="button"
         >
           <ArrowLeft aria-hidden="true" size={19} />
@@ -269,7 +291,9 @@ export function SettingsScreen({
         <section className="settings-section" aria-labelledby="nethack-title">
           <header>
             <h2 id="nethack-title">NetHack</h2>
-            <span>New-game defaults</span>
+            <span>
+              {isGameSettings ? "Current game and future defaults" : "New-game defaults"}
+            </span>
           </header>
           <div className="settings-fields">
             <ToggleField
@@ -389,45 +413,47 @@ export function SettingsScreen({
           </div>
         </section>
 
-        <section className="settings-section" aria-labelledby="profile-title">
-          <header>
-            <h2 id="profile-title">Profile</h2>
-          </header>
-          <div className="settings-profile-actions">
-            <button
-              onClick={() => downloadProfile(profile, PRODUCT_VERSION)}
-              type="button"
-            >
-              <Download aria-hidden="true" size={17} />
-              Export Profile
-            </button>
-            <button
-              disabled={!storageAvailable}
-              onClick={() => fileInputRef.current?.click()}
-              type="button"
-            >
-              <Upload aria-hidden="true" size={17} />
-              Import Profile
-            </button>
-            <input
-              accept=".bhprofile,application/json"
-              aria-label="Import profile file"
-              className="settings-file-input"
-              disabled={!storageAvailable}
-              onChange={(event) => void readImport(event)}
-              ref={fileInputRef}
-              type="file"
-            />
-            <button
-              disabled={!storageAvailable}
-              onClick={() => setConfirmation("restore")}
-              type="button"
-            >
-              <RotateCcw aria-hidden="true" size={17} />
-              Restore Defaults
-            </button>
-          </div>
-        </section>
+        {!isGameSettings && (
+          <section className="settings-section" aria-labelledby="profile-title">
+            <header>
+              <h2 id="profile-title">Profile</h2>
+            </header>
+            <div className="settings-profile-actions">
+              <button
+                onClick={() => downloadProfile(profile, PRODUCT_VERSION)}
+                type="button"
+              >
+                <Download aria-hidden="true" size={17} />
+                Export Profile
+              </button>
+              <button
+                disabled={!storageAvailable}
+                onClick={() => fileInputRef.current?.click()}
+                type="button"
+              >
+                <Upload aria-hidden="true" size={17} />
+                Import Profile
+              </button>
+              <input
+                accept=".bhprofile,application/json"
+                aria-label="Import profile file"
+                className="settings-file-input"
+                disabled={!storageAvailable}
+                onChange={(event) => void readImport(event)}
+                ref={fileInputRef}
+                type="file"
+              />
+              <button
+                disabled={!storageAvailable}
+                onClick={() => setConfirmation("restore")}
+                type="button"
+              >
+                <RotateCcw aria-hidden="true" size={17} />
+                Restore Defaults
+              </button>
+            </div>
+          </section>
+        )}
 
         <footer className="settings-actions">
           <span>{dirty ? "Unsaved changes" : "No unsaved changes"}</span>
@@ -445,7 +471,9 @@ export function SettingsScreen({
       {confirmation === "leave" && (
         <ConfirmationDialog
           confirmLabel="Discard"
-          message="Discard unsaved settings and return Home?"
+          message={`Discard unsaved settings and return to ${
+            isGameSettings ? "Pause" : "Home"
+          }?`}
           onCancel={() => setConfirmation(null)}
           onConfirm={onBack}
           title="Unsaved settings"

@@ -92,6 +92,8 @@ M win/shim/winshim.c
   - 在 `get_nh_event()` 命令边界交换七项动态配置的版本化 32-bit 快照。
   - 只接受经过位级校验的固定字段，并在当前 C 调用栈内使用
     `parseoptions()` 应用，避免 Asyncify 等待期间从 React 重入 WASM。
+  - 使用无交互消息的解析上下文并补做必要刷新，避免批量应用触发
+    `--More--`。
 - **ABI 范围**：只修改 Emscripten 回调参数；原生 `libnethack.a` ABI
   保持不变。
 - **行为依据**：

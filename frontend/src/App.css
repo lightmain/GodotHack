@@ -605,6 +605,12 @@
   letter-spacing: 0;
 }
 
+.settings-screen-game {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+}
+
 .settings-header {
   position: sticky;
   top: 0;
@@ -1338,6 +1344,92 @@
   padding: 24px;
   color: #ff6b6b;
   white-space: pre-wrap;
+}
+
+.nh-pause-backdrop {
+  position: fixed;
+  z-index: 30;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(0 0 0 / 78%);
+}
+
+.nh-pause {
+  width: min(340px, 100%);
+  border: 1px solid #697177;
+  border-radius: 4px;
+  background: #0d1011;
+  box-shadow: 0 18px 60px rgb(0 0 0 / 65%);
+}
+
+.nh-pause > header {
+  padding: 18px 18px 14px;
+  border-bottom: 1px solid #30363a;
+}
+
+.nh-pause > header span {
+  color: #7ddc8c;
+  font-size: 11px;
+}
+
+.nh-pause > header h1 {
+  margin: 4px 0 0;
+  color: #fff;
+  font-size: 22px;
+}
+
+.nh-pause-actions {
+  padding: 10px;
+  display: grid;
+  gap: 7px;
+}
+
+.nh-pause-actions button {
+  min-height: 42px;
+  padding: 8px 11px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid #4a5257;
+  border-radius: 3px;
+  background: #15191b;
+  color: #f0f0e8;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nh-pause-actions button:hover,
+.nh-pause-actions button:focus-visible {
+  border-color: #7ddc8c;
+  background: #19201c;
+  outline: 2px solid #7ddc8c;
+  outline-offset: 2px;
+}
+
+.nh-pause-actions button:disabled {
+  border-color: #30363a;
+  color: #636b70;
+  cursor: wait;
+}
+
+.nh-pause-actions .nh-pause-save {
+  border-color: #c69b36;
+  color: #f0d783;
+}
+
+.nh-pause-actions .nh-pause-save:disabled {
+  border-color: #403a2b;
+  color: #756c55;
+}
+
+.nh-pause-actions [role="status"] {
+  min-height: 18px;
+  color: #8f989d;
+  font-size: 11px;
+  text-align: center;
 }
 
 .nh-overlay {

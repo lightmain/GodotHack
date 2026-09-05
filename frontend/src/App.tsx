@@ -220,7 +220,14 @@ function App({
     );
   }
 
-  return <GameScreen settings={profile.interface} />;
+  return (
+    <GameScreen
+      loadStatus={loadStatus}
+      moduleId={state.moduleId}
+      onApplyProfile={replaceProfile}
+      profile={profile}
+    />
+  );
 }
 
 /** Trigger one browser download and release its temporary object URL. */

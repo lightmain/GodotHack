@@ -49,6 +49,7 @@ let ynCount = 0;
 const numberPadStates = [];
 const ynPrompts = [];
 const rawMessages = [];
+const windowMessages = [];
 const inputStates = [];
 const runtimeSettingsSnapshots = [];
 const runtimeSettingsResults = [];
@@ -118,6 +119,10 @@ async function blissCallback(name, ...args) {
     case "shim_raw_print":
     case "shim_raw_print_bold":
       rawMessages.push(String(args[0] ?? ""));
+      return undefined;
+
+    case "shim_putstr":
+      windowMessages.push(String(args[2] ?? ""));
       return undefined;
 
     case "shim_create_nhwindow":
@@ -288,6 +293,7 @@ async function run() {
   numberPadStates.length = 0;
   ynPrompts.length = 0;
   rawMessages.length = 0;
+  windowMessages.length = 0;
   inputStates.length = 0;
   runtimeSettingsSnapshots.length = 0;
   runtimeSettingsResults.length = 0;
@@ -397,6 +403,10 @@ async function run() {
     globalThis.nethackGlobal?.globals?.flags?.showexp === false
       && globalThis.nethackGlobal?.globals?.flags?.time === false,
     "dynamic settings reached NetHack globals through parseoptions",
+  );
+  assert(
+    !windowMessages.some((message) => /option toggled/i.test(message)),
+    "dynamic settings application emits no interactive option messages",
   );
 
   await sendKeyAndWait(64); // @ toggles autopickup
