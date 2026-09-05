@@ -13,7 +13,9 @@ import {
   createSessionManager,
   type SessionHandle,
   type SessionManager,
+  type SessionManagerOptions,
 } from "./session-manager";
+import { createDefaultProfile } from "../settings/profile";
 
 interface ModuleHarness {
   module: EmscriptenModule;
@@ -134,6 +136,7 @@ function createHarness(
     createErrorId: () => "BH-TEST0001",
     storage: null,
   }),
+  overrides: Partial<SessionManagerOptions> = {},
 ): {
   manager: SessionManager;
   callbackHost: Record<string, unknown>;
@@ -167,6 +170,7 @@ function createHarness(
     diagnostics,
     dispatch,
     moduleFactory: factory,
+    ...overrides,
   });
   return { manager, callbackHost, dispatch, factory };
 }
@@ -184,6 +188,62 @@ beforeEach(() => {
 });
 
 describe("session creation and startup", () => {
+  it("installs the latest NetHack settings before creating a session or calling main", async () => {
+    const module = createModuleHarness("module");
+    const settings = createDefaultProfile().nethack;
+    settings.numberPad = 4;
+    const installRuntimeConfig = vi.fn();
+    const { manager, dispatch } = createHarness(
+      [module.module],
+      undefined,
+      { installRuntimeConfig },
+    );
+
+    await manager.initialize();
+    dispatch.mockClear();
+    await manager.startSession({ kind: "new", settings });
+
+    expect(installRuntimeConfig).toHaveBeenCalledWith(module.module, settings);
+    expect(installRuntimeConfig.mock.invocationCallOrder[0]).toBeLessThan(
+      (module.module.ccall as ReturnType<typeof vi.fn>)
+        .mock.invocationCallOrder[0],
+    );
+    expect(dispatch.mock.calls.map(([action]) => action.type)).toEqual([
+      "SESSION_CREATED",
+    ]);
+  });
+
+  it("terminates the prepared module without calling main when rc installation fails", async () => {
+    const module = createModuleHarness("module");
+    const failure = new Error("rc write failed");
+    const installRuntimeConfig = vi.fn(() => {
+      throw failure;
+    });
+    const { manager, dispatch } = createHarness(
+      [module.module],
+      undefined,
+      { installRuntimeConfig },
+    );
+
+    await manager.initialize();
+    dispatch.mockClear();
+    await expect(manager.startSession({
+      kind: "new",
+      settings: createDefaultProfile().nethack,
+    })).rejects.toBe(failure);
+
+    expect(module.module.ccall).not.toHaveBeenCalled();
+    expect(manager.getActiveSession()).toBeNull();
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "MODULE_FATAL_ERROR",
+      moduleId: "module-1",
+      errorId: "BH-TEST0001",
+    });
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: "SESSION_CREATED",
+    }));
+  });
+
   it("discards a failed module factory result before returning Home", async () => {
     const replacement = createModuleHarness("replacement");
     const { manager, dispatch, factory } = createHarness([replacement.module]);

@@ -46,6 +46,9 @@ const receivedEventNames = new Set();
 const receivedEvents = [];
 let eventCount = 0;
 let ynCount = 0;
+const numberPadStates = [];
+const ynPrompts = [];
+const rawMessages = [];
 
 globalThis.nethackGlobal = globalThis.nethackGlobal || {};
 
@@ -63,6 +66,7 @@ async function blissCallback(name, ...args) {
 
   if (name === "shim_yn_function") {
     ynCount++;
+    ynPrompts.push(String(args[0] ?? ""));
     if (ynCount > 200) {
       console.error("ABORT: shim_yn_function called 200+ times (loop?)");
       process.exit(1);
@@ -72,6 +76,15 @@ async function blissCallback(name, ...args) {
   }
 
   switch (name) {
+    case "shim_number_pad":
+      numberPadStates.push(args[0]);
+      return undefined;
+
+    case "shim_raw_print":
+    case "shim_raw_print_bold":
+      rawMessages.push(String(args[0] ?? ""));
+      return undefined;
+
     case "shim_create_nhwindow":
       return nextWindowId++;
 
@@ -153,6 +166,31 @@ async function run() {
   assert(typeof module.ccall === "function", "module.ccall exists");
   assert(typeof module.FS === "object", "module.FS exists");
 
+  // --- Runtime settings file before main ---
+  console.log("\n--- Runtime settings file before main ---");
+  const runtimeRc = [
+    "OPTIONS=!autopickup",
+    "OPTIONS=pickup_types:$?!",
+    "OPTIONS=number_pad:1",
+    "OPTIONS=safe_pet",
+    "OPTIONS=sortpack",
+    "OPTIONS=showexp",
+    "OPTIONS=time",
+    "OPTIONS=!tutorial",
+    "",
+  ].join("\n");
+  module.FS.writeFile(
+    "/home/web_user/.nethackrc",
+    new TextEncoder().encode(runtimeRc),
+  );
+  assert(
+    module.FS.readFile(
+      "/home/web_user/.nethackrc",
+      { encoding: "utf8" },
+    ) === runtimeRc,
+    "runtime .nethackrc is readable before main",
+  );
+
   // --- Stage-two save helpers before main ---
   console.log("\n--- Save helpers before main ---");
   module.ccall(
@@ -192,6 +230,9 @@ async function run() {
   receivedEventNames.clear();
   receivedEvents.length = 0;
   eventCount = 0;
+  numberPadStates.length = 0;
+  ynPrompts.length = 0;
+  rawMessages.length = 0;
 
   const gamePromise = module.ccall("main", "number", [], [], { async: true });
   gamePromise.catch(() => {});
@@ -221,6 +262,18 @@ async function run() {
       < receivedEvents.indexOf("shim_player_selection_or_tty"),
     "asked for the player name before role selection"
   );
+  assert(
+    numberPadStates.includes(1),
+    "number_pad from runtime .nethackrc reached the window port",
+  );
+  assert(
+    globalThis.nethackGlobal?.globals?.flags?.showexp === true,
+    "showexp from runtime .nethackrc reached NetHack globals",
+  );
+  assert(
+    globalThis.nethackGlobal?.globals?.flags?.time === true,
+    "time from runtime .nethackrc reached NetHack globals",
+  );
 
   // --- Input handling ---
   console.log("\n--- Input handling ---");
@@ -240,6 +293,14 @@ async function run() {
       `game processed input (${eventCount - countBefore} new events)`
     );
   }
+  assert(
+    !ynPrompts.some((query) => /tutorial/i.test(query)),
+    "!tutorial skipped the tutorial query",
+  );
+  assert(
+    !rawMessages.some((message) => /config|syntax|option/i.test(message)),
+    "generated runtime options produced no configuration error",
+  );
 
   // --- Summary ---
   console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);

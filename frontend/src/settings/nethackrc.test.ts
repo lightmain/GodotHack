@@ -18,10 +18,10 @@ describe("NetHack rc generation", () => {
       "OPTIONS=sortpack",
       "OPTIONS=!showexp",
       "OPTIONS=!time",
-      "OPTIONS=tutorial",
       "",
     ].join("\n"));
     expect(rc).not.toContain("\r");
+    expect(rc).not.toContain("tutorial");
   });
 
   it.each(NUMBER_PAD_MODES)(
@@ -89,7 +89,7 @@ describe("NetHack rc generation", () => {
     expect(rc).toContain(
       `OPTIONS=pickup_types:${PICKUP_CLASS_SYMBOLS.join("")}\n`,
     );
-    expect(rc.split("\n").filter(Boolean)).toHaveLength(8);
+    expect(rc.split("\n").filter(Boolean)).toHaveLength(7);
     for (const line of rc.split("\n").filter(Boolean)) {
       expect(line).toMatch(/^OPTIONS=[!a-z_].*$/);
     }

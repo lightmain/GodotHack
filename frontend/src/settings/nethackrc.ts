@@ -17,7 +17,7 @@ export function generateNetHackRc(settings: NetHackSettingsV1): string {
         && normalized.pickupTypes.classes.includes(symbol))
       .join("");
 
-  return [
+  const lines = [
     booleanOption("autopickup", normalized.autopickup),
     `OPTIONS=pickup_types:${pickupTypes}`,
     `OPTIONS=number_pad:${normalized.numberPad}`,
@@ -25,8 +25,10 @@ export function generateNetHackRc(settings: NetHackSettingsV1): string {
     booleanOption("sortpack", normalized.sortpack),
     booleanOption("showexp", normalized.showExperience),
     booleanOption("time", normalized.showTime),
-    booleanOption("tutorial", normalized.tutorial),
-  ].join("\n").concat("\n");
+  ];
+  // Omitting tutorial preserves NetHack's ask state; OPTIONS=tutorial forces it.
+  if (!normalized.tutorial) lines.push("OPTIONS=!tutorial");
+  return lines.join("\n").concat("\n");
 }
 
 function booleanOption(name: string, enabled: boolean): string {

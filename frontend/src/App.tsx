@@ -80,7 +80,10 @@ function App({
    * Start one session and leave startup failures to the reducer event.
    */
   function startNewGame(): void {
-    void sessionManager.startSession({ kind: "new" }).catch(() => undefined);
+    void sessionManager.startSession({
+      kind: "new",
+      settings: profile.nethack,
+    }).catch(() => undefined);
   }
 
   /** Open the save list owned by the current home module. */
@@ -112,6 +115,7 @@ function App({
     void sessionManager.startSession({
       kind: "continue",
       save,
+      settings: profile.nethack,
     }).catch(() => undefined);
   }
 

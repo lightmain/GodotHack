@@ -145,6 +145,7 @@ export function GameScreen({ settings }: { settings: InterfaceSettingsV1 }) {
   return (
     <main
       className={`nh-shell nh-font-${settings.terminalFontSize}`}
+      data-number-pad={snapshot.numberPad ? "on" : "off"}
       aria-label="BlissHack"
     >
       <header className="nh-header">

@@ -25,6 +25,7 @@ describe("GameScreen interface settings", () => {
       }));
 
       expect(html).toContain(`nh-font-${terminalFontSize}`);
+      expect(html).toContain('data-number-pad="off"');
     },
   );
 
