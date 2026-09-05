@@ -1,0 +1,655 @@
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type SyntheticEvent,
+} from "react";
+import {
+  ArrowLeft,
+  Download,
+  RotateCcw,
+  Upload,
+} from "lucide-react";
+import { downloadProfile } from "../settings/download-profile";
+import {
+  createDefaultProfile,
+  parseProfileImport,
+  PICKUP_CLASS_SYMBOLS,
+  validateProfile,
+  type BlissHackProfileExportV1,
+  type BlissHackProfileV1,
+  type InterfaceSettingsV1,
+  type NetHackSettingsV1,
+  type NumberPadMode,
+  type PickupClassSymbol,
+} from "../settings/profile";
+import { diffProfiles, type ProfileDifference } from "../settings/profile-diff";
+import type { ProfileLoadStatus } from "../settings/profile-store";
+import { PRODUCT_VERSION } from "../version";
+
+interface SettingsScreenProps {
+  loadStatus: ProfileLoadStatus;
+  moduleId: string;
+  onApply(profile: BlissHackProfileV1): BlissHackProfileV1;
+  onBack(): void;
+  profile: BlissHackProfileV1;
+}
+
+interface ImportPreview {
+  differences: ProfileDifference[];
+  document: BlissHackProfileExportV1;
+  profile: BlissHackProfileV1;
+}
+
+type Confirmation = "leave" | "restore" | null;
+
+const PICKUP_CLASSES: ReadonlyArray<{
+  label: string;
+  symbol: PickupClassSymbol;
+}> = [
+  { symbol: "$", label: "Coins" },
+  { symbol: "\"", label: "Amulets" },
+  { symbol: ")", label: "Weapons" },
+  { symbol: "[", label: "Armor" },
+  { symbol: "%", label: "Food" },
+  { symbol: "?", label: "Scrolls" },
+  { symbol: "+", label: "Spellbooks" },
+  { symbol: "!", label: "Potions" },
+  { symbol: "=", label: "Rings" },
+  { symbol: "/", label: "Wands" },
+  { symbol: "(", label: "Tools" },
+  { symbol: "*", label: "Gems" },
+  { symbol: "`", label: "Rocks" },
+  { symbol: "0", label: "Iron balls" },
+  { symbol: "_", label: "Chains" },
+];
+
+const NUMBER_PAD_OPTIONS: ReadonlyArray<{
+  label: string;
+  value: NumberPadMode;
+}> = [
+  { value: 0, label: "0 — Letter movement" },
+  { value: 1, label: "1 — Numeric keypad" },
+  { value: 2, label: "2 — Numeric keypad, PC-compatible" },
+  { value: 3, label: "3 — Phone keypad layout" },
+  { value: 4, label: "4 — Phone layout, PC-compatible" },
+  { value: -1, label: "-1 — Letter movement, swap Y and Z" },
+];
+
+/**
+ * Edit one complete profile without changing the prepared game module.
+ * @param props - authoritative profile and application navigation callbacks.
+ * @returns the Home Settings screen.
+ */
+export function SettingsScreen({
+  loadStatus,
+  moduleId,
+  onApply,
+  onBack,
+  profile,
+}: SettingsScreenProps) {
+  const [draft, setDraft] = useState(() => validateProfile(profile));
+  const [confirmation, setConfirmation] = useState<Confirmation>(null);
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(profile);
+  const storageAvailable = loadStatus !== "unavailable";
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent): void => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [dirty]);
+
+  /** Save one complete candidate and retain the draft if persistence fails. */
+  function commit(candidate: BlissHackProfileV1, message: string): boolean {
+    setError(null);
+    setSuccess(null);
+    try {
+      const saved = onApply(candidate);
+      setDraft(saved);
+      setSuccess(message);
+      return true;
+    } catch {
+      setError("Settings could not be saved. Your previous settings are unchanged.");
+      return false;
+    }
+  }
+
+  /** Submit the current draft through the single profile replacement boundary. */
+  function applyDraft(
+    event: SyntheticEvent<HTMLFormElement, SubmitEvent>,
+  ): void {
+    event.preventDefault();
+    if (!dirty || !storageAvailable) return;
+    if (commit(draft, "Settings saved")) onBack();
+  }
+
+  /** Leave immediately when clean, otherwise require explicit discard. */
+  function requestBack(): void {
+    if (dirty) {
+      setConfirmation("leave");
+    } else {
+      onBack();
+    }
+  }
+
+  /** Parse one selected .bhprofile and retain it only for confirmation. */
+  async function readImport(event: ChangeEvent<HTMLInputElement>): Promise<void> {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+    setError(null);
+    setSuccess(null);
+    if (!file.name.toLowerCase().endsWith(".bhprofile")) {
+      setError("Choose a .bhprofile file.");
+      return;
+    }
+
+    try {
+      const document = parseProfileImport(
+        new Uint8Array(await file.arrayBuffer()),
+      );
+      const incoming = validateProfile({
+        schemaVersion: document.schemaVersion,
+        interface: document.interface,
+        nethack: document.nethack,
+      });
+      setImportPreview({
+        differences: diffProfiles(profile, incoming),
+        document,
+        profile: incoming,
+      });
+    } catch {
+      setError("The selected profile is damaged, unsupported, or invalid.");
+    }
+  }
+
+  /** Import the retained candidate as one complete profile replacement. */
+  function confirmImport(): void {
+    if (!importPreview || !storageAvailable) return;
+    if (commit(importPreview.profile, "Profile imported")) {
+      setImportPreview(null);
+    }
+  }
+
+  /** Restore and persist reviewed defaults after confirmation. */
+  function confirmRestore(): void {
+    if (!storageAvailable) return;
+    if (commit(createDefaultProfile(), "Defaults restored")) {
+      setConfirmation(null);
+    }
+  }
+
+  return (
+    <main
+      className="settings-screen"
+      data-module-id={moduleId}
+      aria-labelledby="settings-title"
+    >
+      <header className="settings-header">
+        <button
+          aria-label="Back to Home"
+          className="settings-back"
+          onClick={requestBack}
+          title="Back to Home"
+          type="button"
+        >
+          <ArrowLeft aria-hidden="true" size={19} />
+        </button>
+        <div>
+          <span>BlissHack</span>
+          <h1 id="settings-title">Settings</h1>
+        </div>
+        <span className="settings-version">{PRODUCT_VERSION}</span>
+      </header>
+
+      <form className="settings-form" onSubmit={applyDraft}>
+        {profileStatusMessage(loadStatus) && (
+          <p className="settings-warning" role="alert">
+            {profileStatusMessage(loadStatus)}
+          </p>
+        )}
+        {error && <p className="settings-error" role="alert">{error}</p>}
+        {success && <p className="settings-success" role="status">{success}</p>}
+
+        <section className="settings-section" aria-labelledby="interface-title">
+          <header>
+            <h2 id="interface-title">Interface</h2>
+          </header>
+          <div className="settings-fields">
+            <SegmentedField
+              label="Terminal font size"
+              name="terminal-font-size"
+              onChange={(terminalFontSize) => {
+                updateInterface(setDraft, { terminalFontSize });
+              }}
+              options={[
+                { value: "small", label: "Small" },
+                { value: "medium", label: "Medium" },
+                { value: "large", label: "Large" },
+              ]}
+              value={draft.interface.terminalFontSize}
+            />
+            <SegmentedField
+              label="Message history"
+              name="message-history"
+              onChange={(value) => {
+                updateInterface(setDraft, {
+                  messageHistoryLines: Number(value) as 3 | 5,
+                });
+              }}
+              options={[
+                { value: "3", label: "3 lines" },
+                { value: "5", label: "5 lines" },
+              ]}
+              value={String(draft.interface.messageHistoryLines)}
+            />
+            <ToggleField
+              checked={draft.interface.followPlayer}
+              label="Follow player on the map"
+              onChange={(followPlayer) => {
+                updateInterface(setDraft, { followPlayer });
+              }}
+            />
+          </div>
+        </section>
+
+        <section className="settings-section" aria-labelledby="nethack-title">
+          <header>
+            <h2 id="nethack-title">NetHack</h2>
+            <span>New-game defaults</span>
+          </header>
+          <div className="settings-fields">
+            <ToggleField
+              checked={draft.nethack.tutorial}
+              label="Offer tutorial for new games"
+              onChange={(tutorial) => updateNetHack(setDraft, { tutorial })}
+            />
+            <ToggleField
+              checked={draft.nethack.autopickup}
+              label="Automatic pickup"
+              onChange={(autopickup) => updateNetHack(setDraft, { autopickup })}
+            />
+            <fieldset className="settings-field settings-pickup">
+              <legend>Pickup categories</legend>
+              <div className="settings-segments settings-segments-compact">
+                {(["all", "selected"] as const).map((mode) => (
+                  <label key={mode}>
+                    <input
+                      checked={draft.nethack.pickupTypes.mode === mode}
+                      name="pickup-mode"
+                      onChange={() => {
+                        updateNetHack(setDraft, {
+                          pickupTypes: mode === "all"
+                            ? { mode: "all" }
+                            : {
+                              mode: "selected",
+                              classes: [...PICKUP_CLASS_SYMBOLS],
+                            },
+                        });
+                      }}
+                      type="radio"
+                      value={mode}
+                    />
+                    <span>{mode === "all" ? "All" : "Selected"}</span>
+                  </label>
+                ))}
+              </div>
+              {draft.nethack.pickupTypes.mode === "selected" && (
+                <div className="settings-pickup-grid">
+                  {PICKUP_CLASSES.map(({ symbol, label }) => {
+                    const selected = draft.nethack.pickupTypes.mode === "selected"
+                      ? draft.nethack.pickupTypes.classes
+                      : [];
+                    const checked = selected.includes(symbol);
+                    return (
+                      <label key={symbol}>
+                        <input
+                          checked={checked}
+                          disabled={checked && selected.length === 1}
+                          onChange={(event) => {
+                            const selectedSet = new Set(selected);
+                            if (event.currentTarget.checked) {
+                              selectedSet.add(symbol);
+                            } else {
+                              selectedSet.delete(symbol);
+                            }
+                            updateNetHack(setDraft, {
+                              pickupTypes: {
+                                mode: "selected",
+                                classes: PICKUP_CLASS_SYMBOLS.filter(
+                                  (candidate) => selectedSet.has(candidate),
+                                ),
+                              },
+                            });
+                          }}
+                          type="checkbox"
+                        />
+                        <code>{symbol}</code>
+                        <span>{label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </fieldset>
+            <label className="settings-field settings-select">
+              <span>Movement keys</span>
+              <select
+                onChange={(event) => {
+                  updateNetHack(setDraft, {
+                    numberPad: Number(event.currentTarget.value) as NumberPadMode,
+                  });
+                }}
+                value={draft.nethack.numberPad}
+              >
+                {NUMBER_PAD_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="settings-toggle-grid">
+              <ToggleField
+                checked={draft.nethack.safePet}
+                label="Protect peaceful pets"
+                onChange={(safePet) => updateNetHack(setDraft, { safePet })}
+              />
+              <ToggleField
+                checked={draft.nethack.sortpack}
+                label="Sort inventory"
+                onChange={(sortpack) => updateNetHack(setDraft, { sortpack })}
+              />
+              <ToggleField
+                checked={draft.nethack.showExperience}
+                label="Show experience"
+                onChange={(showExperience) => {
+                  updateNetHack(setDraft, { showExperience });
+                }}
+              />
+              <ToggleField
+                checked={draft.nethack.showTime}
+                label="Show turn count"
+                onChange={(showTime) => updateNetHack(setDraft, { showTime })}
+              />
+            </div>
+          </div>
+        </section>
+
+        <section className="settings-section" aria-labelledby="profile-title">
+          <header>
+            <h2 id="profile-title">Profile</h2>
+          </header>
+          <div className="settings-profile-actions">
+            <button
+              onClick={() => downloadProfile(profile, PRODUCT_VERSION)}
+              type="button"
+            >
+              <Download aria-hidden="true" size={17} />
+              Export Profile
+            </button>
+            <button
+              disabled={!storageAvailable}
+              onClick={() => fileInputRef.current?.click()}
+              type="button"
+            >
+              <Upload aria-hidden="true" size={17} />
+              Import Profile
+            </button>
+            <input
+              accept=".bhprofile,application/json"
+              aria-label="Import profile file"
+              className="settings-file-input"
+              disabled={!storageAvailable}
+              onChange={(event) => void readImport(event)}
+              ref={fileInputRef}
+              type="file"
+            />
+            <button
+              disabled={!storageAvailable}
+              onClick={() => setConfirmation("restore")}
+              type="button"
+            >
+              <RotateCcw aria-hidden="true" size={17} />
+              Restore Defaults
+            </button>
+          </div>
+        </section>
+
+        <footer className="settings-actions">
+          <span>{dirty ? "Unsaved changes" : "No unsaved changes"}</span>
+          <button onClick={requestBack} type="button">Cancel</button>
+          <button
+            className="settings-apply"
+            disabled={!dirty || !storageAvailable}
+            type="submit"
+          >
+            Apply
+          </button>
+        </footer>
+      </form>
+
+      {confirmation === "leave" && (
+        <ConfirmationDialog
+          confirmLabel="Discard"
+          message="Discard unsaved settings and return Home?"
+          onCancel={() => setConfirmation(null)}
+          onConfirm={onBack}
+          title="Unsaved settings"
+        />
+      )}
+      {confirmation === "restore" && (
+        <ConfirmationDialog
+          confirmLabel="Restore"
+          message="Replace all Interface and NetHack settings with defaults?"
+          onCancel={() => setConfirmation(null)}
+          onConfirm={confirmRestore}
+          title="Restore defaults"
+        />
+      )}
+      {importPreview && (
+        <ImportPreviewDialog
+          preview={importPreview}
+          onCancel={() => setImportPreview(null)}
+          onConfirm={confirmImport}
+        />
+      )}
+    </main>
+  );
+}
+
+function SegmentedField<T extends string>({
+  label,
+  name,
+  onChange,
+  options,
+  value,
+}: {
+  label: string;
+  name: string;
+  onChange(value: T): void;
+  options: ReadonlyArray<{ label: string; value: T }>;
+  value: T;
+}) {
+  return (
+    <fieldset className="settings-field">
+      <legend>{label}</legend>
+      <div className="settings-segments">
+        {options.map((option) => (
+          <label key={option.value}>
+            <input
+              checked={value === option.value}
+              name={name}
+              onChange={() => onChange(option.value)}
+              type="radio"
+              value={option.value}
+            />
+            <span>{option.label}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+function ToggleField({
+  checked,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  onChange(checked: boolean): void;
+}) {
+  return (
+    <label className="settings-field settings-toggle">
+      <span>{label}</span>
+      <input
+        checked={checked}
+        onChange={(event) => onChange(event.currentTarget.checked)}
+        type="checkbox"
+      />
+    </label>
+  );
+}
+
+function ConfirmationDialog({
+  confirmLabel,
+  message,
+  onCancel,
+  onConfirm,
+  title,
+}: {
+  confirmLabel: string;
+  message: string;
+  onCancel(): void;
+  onConfirm(): void;
+  title: string;
+}) {
+  return (
+    <div className="settings-modal-backdrop">
+      <section
+        aria-label={title}
+        aria-modal="true"
+        className="settings-modal"
+        role="alertdialog"
+      >
+        <h2>{title}</h2>
+        <p>{message}</p>
+        <div className="settings-modal-actions">
+          <button autoFocus onClick={onCancel} type="button">Cancel</button>
+          <button className="settings-danger" onClick={onConfirm} type="button">
+            {confirmLabel}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ImportPreviewDialog({
+  onCancel,
+  onConfirm,
+  preview,
+}: {
+  onCancel(): void;
+  onConfirm(): void;
+  preview: ImportPreview;
+}) {
+  return (
+    <div className="settings-modal-backdrop">
+      <section
+        aria-label="Import profile"
+        aria-modal="true"
+        className="settings-modal settings-import-preview"
+        role="dialog"
+      >
+        <h2>Import profile</h2>
+        <dl className="settings-import-meta">
+          <div><dt>Version</dt><dd>{preview.document.productVersion}</dd></div>
+          <div><dt>Exported</dt><dd>{formatExportTime(preview.document.exportedAt)}</dd></div>
+        </dl>
+        {preview.differences.length === 0
+          ? <p>No settings differ.</p>
+          : (
+            <div className="settings-differences">
+              <div className="settings-difference-heading">
+                <span>Setting</span><span>Current</span><span>Incoming</span>
+              </div>
+              {preview.differences.map((difference) => (
+                <div key={difference.path}>
+                  <strong>{difference.label}</strong>
+                  <span>{difference.current}</span>
+                  <span>{difference.incoming}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        <div className="settings-modal-actions">
+          <button autoFocus onClick={onCancel} type="button">Cancel</button>
+          <button
+            className="settings-primary"
+            disabled={preview.differences.length === 0}
+            onClick={onConfirm}
+            type="button"
+          >
+            Import
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function updateInterface(
+  setDraft: React.Dispatch<React.SetStateAction<BlissHackProfileV1>>,
+  patch: Partial<InterfaceSettingsV1>,
+): void {
+  setDraft((current) => ({
+    ...current,
+    interface: { ...current.interface, ...patch },
+  }));
+}
+
+function updateNetHack(
+  setDraft: React.Dispatch<React.SetStateAction<BlissHackProfileV1>>,
+  patch: Partial<NetHackSettingsV1>,
+): void {
+  setDraft((current) => ({
+    ...current,
+    nethack: { ...current.nethack, ...patch },
+  }));
+}
+
+function profileStatusMessage(status: ProfileLoadStatus): string | null {
+  if (status === "unavailable") {
+    return "Browser settings storage is unavailable. Changes cannot be saved.";
+  }
+  if (status === "unsupported-schema") {
+    return "Saved settings use an unsupported version. Defaults are shown.";
+  }
+  if (status === "invalid") {
+    return "Saved settings could not be read. Defaults are shown.";
+  }
+  return null;
+}
+
+function formatExportTime(value: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}

@@ -17,6 +17,7 @@ import { downloadDiagnosticLog } from "./diagnostics/download-diagnostics";
 import { FatalScreen } from "./screens/FatalScreen";
 import { HomeScreen } from "./screens/HomeScreen";
 import { GameScreen } from "./screens/GameScreen";
+import { SettingsScreen } from "./screens/SettingsScreen";
 import { createSessionManager } from "./session/session-manager";
 import { useProfileSettings } from "./settings/profile-context";
 import type {
@@ -34,7 +35,7 @@ function App({
   diagnostics?: DiagnosticLog;
 }) {
   const [state, dispatch] = useReducer(appReducer, initialAppState);
-  const { loadStatus, profile } = useProfileSettings();
+  const { loadStatus, profile, replaceProfile } = useProfileSettings();
   const sessionManager = useMemo(
     () => createSessionManager({
       diagnostics,
@@ -92,6 +93,18 @@ function App({
   function closeSavePicker(): void {
     if (state.phase !== "home" || !state.savePickerOpen) return;
     dispatch({ type: "SAVE_PICKER_CLOSED", moduleId: state.moduleId });
+  }
+
+  /** Open Settings without replacing or claiming the prepared module. */
+  function openSettings(): void {
+    if (state.phase !== "home") return;
+    dispatch({ type: "SETTINGS_OPENED", moduleId: state.moduleId });
+  }
+
+  /** Return to Home with the same prepared module generation. */
+  function closeSettings(): void {
+    if (state.phase !== "settings") return;
+    dispatch({ type: "SETTINGS_CLOSED", moduleId: state.moduleId });
   }
 
   /** Continue one validated save with the module which enumerated it. */
@@ -155,9 +168,22 @@ function App({
         onExportSave={exportSave}
         onImportSave={importSave}
         onNewGame={startNewGame}
+        onSettings={openSettings}
         savePickerOpen={state.savePickerOpen}
         saves={saves}
         storageAvailable={state.storageAvailable}
+      />
+    );
+  }
+
+  if (state.phase === "settings") {
+    return (
+      <SettingsScreen
+        loadStatus={loadStatus}
+        moduleId={state.moduleId}
+        onApply={replaceProfile}
+        onBack={closeSettings}
+        profile={profile}
       />
     );
   }

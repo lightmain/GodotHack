@@ -83,6 +83,24 @@ describe("appReducer legal transitions", () => {
     })).toEqual(home);
   });
 
+  it("opens and closes Settings without replacing the prepared module", () => {
+    const home = homeState();
+    const settings = appReducer(home, {
+      type: "SETTINGS_OPENED",
+      moduleId: "module-1",
+    });
+
+    expect(settings).toEqual({
+      phase: "settings",
+      moduleId: "module-1",
+      storageAvailable: true,
+    });
+    expect(appReducer(settings, {
+      type: "SETTINGS_CLOSED",
+      moduleId: "module-1",
+    })).toEqual(home);
+  });
+
   it("keeps the save picker open for importing when no ready saves remain", () => {
     const opened = appReducer(homeState(), {
       type: "SAVE_PICKER_OPENED",
@@ -227,6 +245,10 @@ describe("appReducer lifecycle guards", () => {
     })).toBe(state);
     expect(appReducer(state, {
       type: "SAVE_PICKER_OPENED",
+      moduleId: "stale-module",
+    })).toBe(state);
+    expect(appReducer(state, {
+      type: "SETTINGS_OPENED",
       moduleId: "stale-module",
     })).toBe(state);
   });
