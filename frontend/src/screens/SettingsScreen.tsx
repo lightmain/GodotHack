@@ -35,16 +35,19 @@ import type {
   FullBackupImportResult,
 } from "../session/session-manager";
 import { DataManagementSection } from "./DataManagementSection";
+import { GameLockCancelledError } from "../concurrency/game-lock";
+import { ProfileStaleError } from "../settings/profile-store";
 
 interface SettingsScreenProps {
   context?: "home" | "game";
   getDiagnosticCount?: () => number;
   loadStatus: ProfileLoadStatus;
   moduleId: string;
-  onApply(profile: BlissHackProfileV1): BlissHackProfileV1;
+  onApply(profile: BlissHackProfileV1): Promise<BlissHackProfileV1>;
   onBack(): void;
   onClearLocalData?: () => Promise<void>;
   onExportFullBackup?: () => Promise<FullBackupExport>;
+  onExportProfile?: () => Promise<BlissHackProfileV1>;
   onImportFullBackup?: (
     preview: BackupImportPreview,
     overwriteFileNames: ReadonlySet<string>,
@@ -117,6 +120,9 @@ export function SettingsScreen({
   onExportFullBackup = async () => {
     throw new Error("Full backup export is unavailable");
   },
+  onExportProfile = async () => {
+    throw new Error("Profile export is unavailable");
+  },
   onImportFullBackup = async () => {
     throw new Error("Full backup import is unavailable");
   },
@@ -133,6 +139,7 @@ export function SettingsScreen({
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [profilePending, setProfilePending] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dirty = JSON.stringify(draft) !== JSON.stringify(profile);
   const storageAvailable = loadStatus !== "unavailable";
@@ -171,27 +178,36 @@ export function SettingsScreen({
   });
 
   /** Save one complete candidate and retain the draft if persistence fails. */
-  function commit(candidate: BlissHackProfileV1, message: string): boolean {
+  async function commit(
+    candidate: BlissHackProfileV1,
+    message: string,
+  ): Promise<boolean> {
     setError(null);
     setSuccess(null);
+    setProfilePending(true);
     try {
-      const saved = onApply(candidate);
+      const saved = await onApply(candidate);
       setDraft(saved);
       setSuccess(message);
       return true;
-    } catch {
-      setError("Settings could not be saved. Your previous settings are unchanged.");
+    } catch (error) {
+      if (error instanceof GameLockCancelledError) return false;
+      setError(error instanceof ProfileStaleError
+        ? "Settings changed in another page. Review your changes and try again."
+        : "Settings could not be saved. Your previous settings are unchanged.");
       return false;
+    } finally {
+      setProfilePending(false);
     }
   }
 
   /** Submit the current draft through the single profile replacement boundary. */
-  function applyDraft(
+  async function applyDraft(
     event: SyntheticEvent<HTMLFormElement, SubmitEvent>,
-  ): void {
+  ): Promise<void> {
     event.preventDefault();
-    if (!dirty || !storageAvailable) return;
-    if (commit(draft, "Settings saved")) onBack();
+    if (!dirty || !storageAvailable || profilePending) return;
+    if (await commit(draft, "Settings saved")) onBack();
   }
 
   /** Leave immediately when clean, otherwise require explicit discard. */
@@ -236,18 +252,34 @@ export function SettingsScreen({
   }
 
   /** Import the retained candidate as one complete profile replacement. */
-  function confirmImport(): void {
-    if (!importPreview || !storageAvailable) return;
-    if (commit(importPreview.profile, "Profile imported")) {
+  async function confirmImport(): Promise<void> {
+    if (!importPreview || !storageAvailable || profilePending) return;
+    if (await commit(importPreview.profile, "Profile imported")) {
       setImportPreview(null);
     }
   }
 
   /** Restore and persist reviewed defaults after confirmation. */
-  function confirmRestore(): void {
-    if (!storageAvailable) return;
-    if (commit(createDefaultProfile(), "Defaults restored")) {
+  async function confirmRestore(): Promise<void> {
+    if (!storageAvailable || profilePending) return;
+    if (await commit(createDefaultProfile(), "Defaults restored")) {
       setConfirmation(null);
+    }
+  }
+
+  /** Export the profile reloaded under the shared browser lock. */
+  async function exportProfile(): Promise<void> {
+    if (profilePending) return;
+    setError(null);
+    setProfilePending(true);
+    try {
+      downloadProfile(await onExportProfile(), PRODUCT_VERSION);
+    } catch (error) {
+      if (!(error instanceof GameLockCancelledError)) {
+        setError("The profile could not be exported.");
+      }
+    } finally {
+      setProfilePending(false);
     }
   }
 
@@ -457,14 +489,15 @@ export function SettingsScreen({
             </header>
             <div className="settings-profile-actions">
               <button
-                onClick={() => downloadProfile(profile, PRODUCT_VERSION)}
+                disabled={profilePending}
+                onClick={() => void exportProfile()}
                 type="button"
               >
                 <Download aria-hidden="true" size={17} />
                 Export Profile
               </button>
               <button
-                disabled={!storageAvailable}
+                disabled={!storageAvailable || profilePending}
                 onClick={() => fileInputRef.current?.click()}
                 type="button"
               >
@@ -481,7 +514,7 @@ export function SettingsScreen({
                 type="file"
               />
               <button
-                disabled={!storageAvailable}
+                disabled={!storageAvailable || profilePending}
                 onClick={() => setConfirmation("restore")}
                 type="button"
               >
@@ -497,9 +530,10 @@ export function SettingsScreen({
             dirty={dirty}
             getDiagnosticCount={getDiagnosticCount}
             onApplyProfile={(candidate) => {
-              const saved = onApply(candidate);
-              setDraft(saved);
-              return saved;
+              return onApply(candidate).then((saved) => {
+                setDraft(saved);
+                return saved;
+              });
             }}
             onClearLocalData={onClearLocalData}
             onExportFullBackup={onExportFullBackup}
@@ -522,7 +556,7 @@ export function SettingsScreen({
           <button onClick={requestBack} type="button">Cancel</button>
           <button
             className="settings-apply"
-            disabled={!dirty || !storageAvailable}
+            disabled={!dirty || !storageAvailable || profilePending}
             type="submit"
           >
             Apply

@@ -47,6 +47,12 @@ export function ProfileProvider({
     return cleared;
   }, [store]);
 
+  const reloadProfile = useCallback(() => {
+    const loaded = store.load();
+    setState(loaded);
+    return loaded.profile;
+  }, [store]);
+
   const resetProfile = useCallback(() => {
     const profile = createDefaultProfile();
     setState({ profile, status: "missing" });
@@ -57,9 +63,10 @@ export function ProfileProvider({
     profile: state.profile,
     loadStatus: state.status,
     clearProfile,
+    reloadProfile,
     resetProfile,
     replaceProfile,
-  }), [clearProfile, replaceProfile, resetProfile, state]);
+  }), [clearProfile, reloadProfile, replaceProfile, resetProfile, state]);
 
   return (
     <ProfileContext value={value}>

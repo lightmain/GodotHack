@@ -21,6 +21,7 @@ import type {
   BackupImportPreview,
   BackupImportSummary,
 } from "../backup/backup-operations";
+import { BackupPreviewStaleError } from "../backup/backup-operations";
 import {
   browserPersistenceAdapter,
   type PersistenceAdapter,
@@ -32,11 +33,12 @@ import type {
   FullBackupExport,
   FullBackupImportResult,
 } from "../session/session-manager";
+import { GameLockCancelledError } from "../concurrency/game-lock";
 
 interface DataManagementSectionProps {
   dirty: boolean;
   getDiagnosticCount(): number;
-  onApplyProfile(profile: BlissHackProfileV1): BlissHackProfileV1;
+  onApplyProfile(profile: BlissHackProfileV1): Promise<BlissHackProfileV1>;
   onClearLocalData(): Promise<void>;
   onExportFullBackup(): Promise<FullBackupExport>;
   onImportFullBackup(
@@ -137,8 +139,10 @@ export function DataManagementSection({
     setError(null);
     try {
       downloadText(await onExportFullBackup());
-    } catch {
-      setError("The full backup could not be created.");
+    } catch (operationError) {
+      if (!(operationError instanceof GameLockCancelledError)) {
+        setError("The full backup could not be created.");
+      }
     } finally {
       setPending(false);
     }
@@ -165,9 +169,11 @@ export function DataManagementSection({
       );
       setOverwrites(new Set());
       setPreview(nextPreview);
-    } catch {
-      setError("The selected backup is damaged, unsupported, or invalid.");
-      restoreFocus(importButtonRef);
+    } catch (operationError) {
+      if (!(operationError instanceof GameLockCancelledError)) {
+        setError("The selected backup is damaged, unsupported, or invalid.");
+        restoreFocus(importButtonRef);
+      }
     } finally {
       setPending(false);
     }
@@ -182,23 +188,31 @@ export function DataManagementSection({
       const summary = await onImportFullBackup(preview, overwrites);
       setCompleted({ preview, summary, profileApplied: null });
       setPreview(null);
-    } catch {
-      setError("Backup import stopped because local save data could not be restored.");
-      setPreview(null);
-      restoreFocus(importButtonRef);
+    } catch (operationError) {
+      if (operationError instanceof BackupPreviewStaleError) {
+        setPreview(operationError.preview);
+        setOverwrites(new Set());
+        setError("Local saves changed. Review the updated backup preview.");
+      } else if (!(operationError instanceof GameLockCancelledError)) {
+        setError("Backup import stopped because local save data could not be restored.");
+        setPreview(null);
+        restoreFocus(importButtonRef);
+      }
     } finally {
       setPending(false);
     }
   }
 
   /** Apply the independently reviewed profile after save processing. */
-  function applyImportedProfile(): void {
+  async function applyImportedProfile(): Promise<void> {
     if (!completed) return;
     try {
-      onApplyProfile(completed.preview.source.profile);
+      await onApplyProfile(completed.preview.source.profile);
       setCompleted({ ...completed, profileApplied: true });
-    } catch {
-      setCompleted({ ...completed, profileApplied: false });
+    } catch (operationError) {
+      if (!(operationError instanceof GameLockCancelledError)) {
+        setCompleted({ ...completed, profileApplied: false });
+      }
     }
   }
 
@@ -209,11 +223,13 @@ export function DataManagementSection({
     setError(null);
     try {
       await onClearLocalData();
-    } catch {
-      setError("Local data could not be cleared. Existing data was preserved when possible.");
-      setClearOpen(false);
-      setClearText("");
-      restoreFocus(clearButtonRef);
+    } catch (operationError) {
+      if (!(operationError instanceof GameLockCancelledError)) {
+        setError("Local data could not be cleared. Existing data was preserved when possible.");
+        setClearOpen(false);
+        setClearText("");
+        restoreFocus(clearButtonRef);
+      }
     } finally {
       setPending(false);
     }

@@ -2,8 +2,8 @@
 
 ## 1. 文档状态
 
-本文是 prealpha-3 阶段四的设计评审和分步实施计划，当前等待用户确认。
-确认前不修改前端运行时代码。
+本文是 prealpha-3 阶段四的设计评审、分步实施计划和完成记录。用户已于
+2026-09-07 确认在独立分支实施，阶段四实现和自动验收已经完成。
 
 本文以已经完成的阶段三实现为基线。阶段四只修改 TypeScript、React、测试和
 文档，不修改 NetHack C、shim 或 WebAssembly 运行时三件套。
@@ -663,3 +663,33 @@ git diff --check
 7. Web Locks API 缺失时只 warning 并无锁降级，不实现任何伪锁。
 8. 持久存储授权和诊断日志导出不取游戏锁；阶段四明确列出的其他 profile、
    save、backup 和 clear 操作均取锁。
+
+## 16. 实施结果
+
+阶段四已于 2026-09-07 在 `dev/MultiPageLock` 分支完成：
+
+- 新增基于 Web Locks API 的统一适配器。游戏 session 持有长期 lease，Home
+  存档、profile、完整备份和清除操作使用同名短锁。
+- 所有受保护存档操作在获得锁后重新 populate IDBFS；Continue 打开存档列表
+  时也刷新，因此已打开的第二页面能够看到第一页刚保存的存档。
+- New Game 和 Continue 在锁内重新读取 profile，完整备份导出使用锁内最新
+  profile；过期 Settings draft 不覆盖另一页面已经保存的配置。
+- raw save 删除与覆盖绑定玩家确认时看到的 metadata revision；完整备份最终
+  导入重新分类，目标变化时返回更新预览而不写入。
+- 锁冲突和浏览器锁请求失败使用可恢复的 `Try Again` / `Cancel` 对话框；API
+  缺失时只显示单页面使用 warning，不建立伪锁。
+- 正常退出、fatal 清理、页面关闭和 dispose 都会释放 session lease；idle
+  Home dispose 不再把旧 MEMFS 快照 flush 回 IndexedDB。
+
+最终验收结果：
+
+- `npm test`：37 个测试文件、376 项断言通过。
+- `npm run lint -- --deny-warnings`：0 warning、0 error。
+- `npm run build`：TypeScript 和 Vite 生产构建通过，运行时三件套校验通过。
+- `npm run test:integration:wasm`：33 项真实 WASM 断言通过。
+- `npm run test:integration:browser`：原 22 条单窗口流程和新增 7 条锁流程，
+  共 29 条 Chromium 流程通过。
+- `npm run test:long`：4 条长流程通过。
+- `git diff --check` 通过。
+- 人工检查了窄视口 Home 和锁冲突对话框；单窗口无新增提示，对话框无重叠，
+  初始焦点和背景 inert 行为正确。

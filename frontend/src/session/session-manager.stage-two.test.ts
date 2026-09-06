@@ -53,6 +53,9 @@ interface StageTwoModuleHarness {
 
 interface StorageServiceFake {
   initialize: ReturnType<typeof vi.fn<() => Promise<boolean>>>;
+  refreshFromPersistent?: ReturnType<
+    typeof vi.fn<() => Promise<ValidatedSave[]>>
+  >;
   listSaves: ReturnType<typeof vi.fn<() => Promise<ValidatedSave[]>>>;
   readSave: ReturnType<typeof vi.fn<(path: string) => Promise<Uint8Array>>>;
   restoreOriginalSave: ReturnType<
@@ -162,6 +165,7 @@ function createStageTwoManager(
     ...(createStorage
       ? {
         createStorageService: (module) => ({
+          refreshFromPersistent: vi.fn(async () => []),
           exportAllSaves: vi.fn(async () => []),
           validateSave: vi.fn(async () => ({
             status: "damaged" as const,

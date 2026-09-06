@@ -410,7 +410,12 @@ describe("full backup import refresh", () => {
       initialize: vi.fn(async () => true),
       listSaves: vi.fn()
         .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
         .mockRejectedValueOnce(new Error("refresh failed")),
+      validateSave: vi.fn(async () => ({
+        status: "incompatible" as const,
+        reason: "fingerprint-mismatch" as const,
+      })),
       importSave: vi.fn(),
       exportSave: vi.fn(),
       readSave: vi.fn(),

@@ -19,6 +19,7 @@ type SaveValidation =
 
 interface RawSaveImportRequest {
   bytes: Uint8Array;
+  expectedExisting?: { identity: SaveIdentity; modifiedAt: number | null };
   modifiedAt: number | null;
   overwrite: boolean;
 }
@@ -181,6 +182,32 @@ describe("raw save import", () => {
 
     expect(harness.files.get("/save/0Ada")).toEqual(original);
     expect(harness.module.FS.writeFile).not.toHaveBeenCalled();
+    expect(harness.syncRequests).toHaveLength(1);
+  });
+
+  it("requires renewed approval when an overwrite target changed", async () => {
+    const harness = createStorageModuleHarness();
+    harness.files.set("/save/0Ada", Uint8Array.of(0x68, 0x10));
+    harness.fileModifiedAt.set("/save/0Ada", 1_725_000_000_000);
+    const { service } = await createService(harness);
+
+    const result = await service.importSave({
+      bytes: Uint8Array.of(0x68, 0x20),
+      expectedExisting: {
+        identity: ada,
+        modifiedAt: 1_700_000_000_000,
+      },
+      modifiedAt: null,
+      overwrite: true,
+    });
+
+    expect(result).toMatchObject({
+      status: "conflict",
+      existing: { modifiedAt: 1_725_000_000_000 },
+    });
+    expect(harness.files.get("/save/0Ada")).toEqual(
+      Uint8Array.of(0x68, 0x10),
+    );
     expect(harness.syncRequests).toHaveLength(1);
   });
 

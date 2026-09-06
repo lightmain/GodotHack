@@ -7,9 +7,11 @@ import type {
 } from "../storage/storage-service";
 import { serializeBackup } from "./backup-file";
 import {
+  backupPreviewMatches,
   BackupRollbackError,
   importFullBackup,
   previewFullBackup,
+  refreshBackupPreview,
 } from "./backup-operations";
 
 const ada: SaveIdentity = {
@@ -118,6 +120,35 @@ describe("full backup operations", () => {
     expect(storage.importSave).toHaveBeenCalledOnce();
   });
 
+  it("detects a local conflict created after the reviewed preview", async () => {
+    const reviewed = {
+      source: {
+        productVersion: "prealpha-3",
+        buildId: "test",
+        exportedAt: "2026-09-06T12:00:00.000Z",
+        profile: createDefaultProfile(),
+      },
+      entries: [entry("0Ada", 1, "importable", ada)],
+    };
+    const storage = storageFake({
+      listSaves: vi.fn(async () => [{
+        path: "/save/0Ada",
+        modifiedAt: 2,
+        status: "ready" as const,
+        identity: ada,
+      }]),
+      validateSave: vi.fn(async () => ({
+        status: "ready" as const,
+        identity: ada,
+      })),
+    });
+
+    const current = await refreshBackupPreview(storage, reviewed);
+
+    expect(current.entries[0].classification).toBe("conflict");
+    expect(backupPreviewMatches(reviewed, current)).toBe(false);
+  });
+
   it("rejects duplicate parsed player identities before presenting a preview", async () => {
     const bytes = await backupBytes([
       { fileName: "0Ada", bytes: Uint8Array.of(1) },
@@ -138,6 +169,7 @@ function storageFake(
 ): StorageService {
   return {
     initialize: vi.fn(async () => true),
+    refreshFromPersistent: vi.fn(async () => []),
     listSaves: vi.fn(async () => []),
     readSave: vi.fn(async () => new Uint8Array()),
     restoreOriginalSave: vi.fn(async () => undefined),

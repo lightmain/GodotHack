@@ -9,6 +9,7 @@ import { SavePickerPopover } from "./SavePickerPopover";
 
 /** Properties for the application home screen. */
 interface HomeScreenProps {
+  gameLockSupported?: boolean;
   hasSaves?: boolean;
   moduleId?: string;
   onContinue?: () => void;
@@ -21,6 +22,7 @@ interface HomeScreenProps {
     request: RawSaveImportRequest,
   ) => Promise<HomeSaveImportResult>;
   onNewGame: () => void;
+  operationError?: string | null;
   onSettings?: () => void;
   savePickerOpen?: boolean;
   saves?: SaveListEntry[];
@@ -33,6 +35,7 @@ interface HomeScreenProps {
  * @returns the application home screen.
  */
 export function HomeScreen({
+  gameLockSupported = true,
   moduleId = "home",
   onContinue = () => undefined,
   onContinueSave = () => undefined,
@@ -44,6 +47,7 @@ export function HomeScreen({
     throw new Error("Raw save import is unavailable");
   },
   onNewGame,
+  operationError = null,
   onSettings = () => undefined,
   savePickerOpen = false,
   saves = [],
@@ -123,6 +127,17 @@ export function HomeScreen({
         {!storageAvailable && (
           <p className="home-storage-warning" role="status">
             Persistent storage is unavailable. New games are temporary.
+          </p>
+        )}
+        {!gameLockSupported && (
+          <p className="home-storage-warning" role="status">
+            This browser cannot protect games opened in multiple BlissHack
+            pages. Use only one page at a time.
+          </p>
+        )}
+        {operationError && (
+          <p className="home-storage-warning" role="alert">
+            {operationError}
           </p>
         )}
       </section>

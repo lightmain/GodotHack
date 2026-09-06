@@ -34,6 +34,14 @@ export interface ProfileStore {
   clear(): BlissHackProfileV1;
 }
 
+/** A Settings draft was based on a profile replaced by another page. */
+export class ProfileStaleError extends Error {
+  constructor() {
+    super("The saved profile changed after Settings was opened");
+    this.name = "ProfileStaleError";
+  }
+}
+
 /**
  * Create a profile store around an injectable browser storage implementation.
  * A null adapter supports browsers where localStorage access is unavailable.

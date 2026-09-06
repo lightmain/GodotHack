@@ -42,12 +42,23 @@ import {
   exportFullBackup as createFullBackup,
   importFullBackup as importBackupSaves,
   previewFullBackup as createBackupPreview,
+  backupPreviewMatches,
+  refreshBackupPreview,
+  BackupPreviewStaleError,
   BackupRollbackError,
   type BackupImportPreview,
   type BackupImportSummary,
 } from "../backup/backup-operations";
 import { BUILD_ID, PRODUCT_VERSION } from "../version";
 import type { LocalDataStore } from "../storage/local-data";
+import {
+  createGameLock,
+  GameLockConflictError,
+  GameLockRequestError,
+  type GameLock,
+  type GameLockLease,
+  type GameLockOperation,
+} from "../concurrency/game-lock";
 
 /** A started session and the callback registered for its WASM module. */
 export interface SessionHandle {
@@ -102,9 +113,11 @@ export interface FullBackupImportResult extends BackupImportSummary {
 export interface SessionManager {
   initialize: () => Promise<HomePreparation>;
   startSession: (request?: SessionStartRequest) => Promise<SessionHandle>;
+  refreshHome: (moduleId: string) => Promise<HomePreparation>;
   deleteSave: (
     moduleId: string,
     path: string,
+    expected?: SaveListEntry,
   ) => Promise<HomePreparation>;
   importSave: (
     moduleId: string,
@@ -132,6 +145,13 @@ export interface SessionManager {
     localData: LocalDataStore,
     resetLocalState: () => void,
   ) => Promise<HomePreparation>;
+  runProfileOperation: <T>(
+    operation: Extract<
+      GameLockOperation,
+      "profile-save" | "profile-import" | "profile-export"
+    >,
+    callback: () => Promise<T>,
+  ) => Promise<T>;
   cleanupSession: (sessionId: string) => Promise<void>;
   reportFatal: (
     area: DiagnosticArea,
@@ -142,6 +162,7 @@ export interface SessionManager {
   dispose: () => Promise<void>;
   getActiveSession: () => SessionHandle | null;
   getHomePreparation: () => HomePreparation | null;
+  isGameLockSupported: () => boolean;
   isWaitingForInput: () => boolean;
   sendKey: (value: number) => void;
   sendPosition: (x: number, y: number, modifier: 1 | 2) => void;
@@ -166,6 +187,8 @@ export interface SessionManagerOptions {
     module: EmscriptenModule,
     settings: NetHackSettingsV1,
   ) => void;
+  gameLock?: GameLock;
+  loadProfile?: () => BlissHackProfileV1;
   setRestoreRequired?: (
     module: EmscriptenModule,
     required: boolean,
@@ -191,6 +214,7 @@ interface SessionRecord {
   sessionId: string;
   callbackName: string;
   handle: SessionHandle;
+  lockLease: GameLockLease;
   mainPromise: Promise<unknown>;
   cleanupPromise: Promise<void> | null;
   continuation: {
@@ -219,12 +243,14 @@ export function createSessionManager(
   const createSessionId = options.createSessionId ?? defaultSessionId;
   const applyStartupIdentity = options.setStartupIdentity ?? setStartupIdentity;
   const applyRestoreRequired = options.setRestoreRequired ?? setRestoreRequired;
+  const gameLock = options.gameLock ?? createGameLock();
   let currentModule: ModuleRecord | null = null;
   let initializePromise: Promise<HomePreparation> | null = null;
   let startPromise: Promise<SessionHandle> | null = null;
   let homeOperationPromise: Promise<unknown> | null = null;
   let fatalErrorId: string | null = null;
   let disposed = false;
+  let unsupportedLockReported = false;
 
   /** Record one optional lifecycle event without coupling manager availability to it. */
   function recordDiagnostic(input: DiagnosticEventInput): void {
@@ -255,6 +281,14 @@ export function createSessionManager(
   /** Prepare one module and its storage before Home becomes ready. */
   function initialize(): Promise<HomePreparation> {
     disposed = false;
+    if (!gameLock.supported && !unsupportedLockReported) {
+      unsupportedLockReported = true;
+      recordDiagnostic({
+        level: "warning",
+        area: "storage",
+        event: "game_lock.unsupported",
+      });
+    }
     if (currentModule?.preparation) {
       return Promise.resolve(currentModule.preparation);
     }
@@ -390,138 +424,141 @@ export function createSessionManager(
   ): Promise<SessionHandle> {
     await initialize();
     await homeOperationPromise?.catch(() => undefined);
-    const owner = currentModule;
-    if (
-      !owner
-      || owner.closed
-      || !owner.module
-      || !owner.storage
-      || !owner.preparation
-      || owner.session
-    ) {
-      throw new Error("No ready game module is available");
-    }
+    const operation = request.kind === "continue"
+      ? "continue-game"
+      : "new-game";
+    let lease: GameLockLease | null = await acquireSessionLease(operation);
+    try {
+      const owner = currentHomeOwnerForSession();
+      if (gameLock.supported) await refreshHomeStorage(owner);
 
-    if (request.settings) {
-      try {
-        const installRuntimeConfig = options.installRuntimeConfig
-          ?? installRuntimeNetHackRc;
-        installRuntimeConfig(owner.module, request.settings);
-        recordDiagnostic({
-          level: "info",
-          area: "wasm",
-          event: "settings.runtime_config_installed",
-          moduleId: owner.moduleId,
-        });
-      } catch (error) {
-        await reportFatal(
-          "wasm",
-          "settings.runtime_config_install_failed",
-          error,
-        );
-        throw error;
-      }
-    }
-
-    const sessionId = createSessionId();
-    const callbackName = callbackNameFor(sessionId);
-    const handle: SessionHandle = {
-      moduleId: owner.moduleId,
-      sessionId,
-      callbackName,
-      module: owner.module,
-    };
-    const session: SessionRecord = {
-      sessionId,
-      callbackName,
-      handle,
-      mainPromise: Promise.resolve(),
-      cleanupPromise: null,
-      continuation: null,
-      exitFlushed: false,
-      closed: false,
-    };
-    owner.session = session;
-    recordDiagnostic({
-      level: "info",
-      area: "session",
-      event: "session.created",
-      moduleId: owner.moduleId,
-      sessionId,
-    });
-
-    if (request.kind === "continue") {
-      if (request.save.status !== "ready") {
-        throw new Error("Cannot continue an unavailable save");
-      }
-      const listedSave = owner.preparation.saves.find(
-        (save) => save.path === request.save.path && save.status === "ready",
-      );
-      if (!listedSave || listedSave.status !== "ready") {
-        throw new Error("Selected save is not part of the current module");
-      }
-      session.continuation = {
-        path: listedSave.path,
-        originalBytes: await owner.storage.readSave(listedSave.path),
-        restoreFailed: false,
-      };
-      applyStartupIdentity(owner.module, listedSave.identity);
-      applyRestoreRequired(owner.module, true);
-    }
-
-    const knownSaveNames = request.kind === "new"
-      ? owner.preparation.saves.flatMap((save) =>
-        save.status === "ready" ? [save.identity.playerName] : [])
-      : [];
-    resetBridgeState();
-    setKnownSaveNames(knownSaveNames);
-    options.dispatch({
-      type: "SESSION_CREATED",
-      moduleId: owner.moduleId,
-      sessionId,
-    });
-    registerCallback(owner, session);
-    owner.module.ccall(
-      "shim_graphics_set_callback",
-      null,
-      ["string"],
-      [callbackName],
-    );
-
-    const mainResult = owner.module.ccall(
-      "main",
-      "number",
-      [],
-      [],
-      { async: true },
-    );
-    recordDiagnostic({
-      level: "info",
-      area: "wasm",
-      event: "wasm.main_started",
-      moduleId: owner.moduleId,
-      sessionId,
-    });
-    session.mainPromise = Promise.resolve(mainResult);
-    void session.mainPromise.then(
-      () => finishSession(owner, session),
-      (error: unknown) => {
-        if (session.continuation) {
-          void failRestore(
-            owner,
-            session,
-            error,
+      const settings = options.loadProfile?.().nethack ?? request.settings;
+      if (settings) {
+        try {
+          const installRuntimeConfig = options.installRuntimeConfig
+            ?? installRuntimeNetHackRc;
+          installRuntimeConfig(owner.module, settings);
+          recordDiagnostic({
+            level: "info",
+            area: "wasm",
+            event: "settings.runtime_config_installed",
+            moduleId: owner.moduleId,
+          });
+        } catch (error) {
+          await reportFatal(
             "wasm",
-            "wasm.main_failed",
+            "settings.runtime_config_install_failed",
+            error,
           );
-        } else if (isSuccessfulExit(error)) {
-          void finishSession(owner, session);
-        } else {
-          void failSession(session, error, "wasm", "wasm.main_failed");
+          throw error;
         }
-      },
-    );
-    return handle;
+      }
+
+      let continuation: SessionRecord["continuation"] = null;
+      if (request.kind === "continue") {
+        if (request.save.status !== "ready") {
+          throw new Error("Cannot continue an unavailable save");
+        }
+        const listedSave = owner.preparation.saves.find(
+          (save) => save.path === request.save.path && save.status === "ready",
+        );
+        if (!listedSave || listedSave.status !== "ready") {
+          throw new Error("Selected save is no longer available");
+        }
+        continuation = {
+          path: listedSave.path,
+          originalBytes: await owner.storage.readSave(listedSave.path),
+          restoreFailed: false,
+        };
+        applyStartupIdentity(owner.module, listedSave.identity);
+        applyRestoreRequired(owner.module, true);
+      }
+
+      const sessionId = createSessionId();
+      const callbackName = callbackNameFor(sessionId);
+      const handle: SessionHandle = {
+        moduleId: owner.moduleId,
+        sessionId,
+        callbackName,
+        module: owner.module,
+      };
+      const session: SessionRecord = {
+        sessionId,
+        callbackName,
+        handle,
+        lockLease: lease,
+        mainPromise: Promise.resolve(),
+        cleanupPromise: null,
+        continuation,
+        exitFlushed: false,
+        closed: false,
+      };
+      lease = null;
+      owner.session = session;
+      recordDiagnostic({
+        level: "info",
+        area: "session",
+        event: "session.created",
+        moduleId: owner.moduleId,
+        sessionId,
+      });
+
+      const knownSaveNames = request.kind === "new"
+        ? owner.preparation.saves.flatMap((save) =>
+          save.status === "ready" ? [save.identity.playerName] : [])
+        : [];
+      resetBridgeState();
+      setKnownSaveNames(knownSaveNames);
+      options.dispatch({
+        type: "SESSION_CREATED",
+        moduleId: owner.moduleId,
+        sessionId,
+      });
+      registerCallback(owner, session);
+      owner.module.ccall(
+        "shim_graphics_set_callback",
+        null,
+        ["string"],
+        [callbackName],
+      );
+
+      const mainResult = owner.module.ccall(
+        "main",
+        "number",
+        [],
+        [],
+        { async: true },
+      );
+      recordDiagnostic({
+        level: "info",
+        area: "wasm",
+        event: "wasm.main_started",
+        moduleId: owner.moduleId,
+        sessionId,
+      });
+      session.mainPromise = Promise.resolve(mainResult);
+      void session.mainPromise.then(
+        () => finishSession(owner, session),
+        (error: unknown) => {
+          if (session.continuation) {
+            void failRestore(
+              owner,
+              session,
+              error,
+              "wasm",
+              "wasm.main_failed",
+            );
+          } else if (isSuccessfulExit(error)) {
+            void finishSession(owner, session);
+          } else {
+            void failSession(session, error, "wasm", "wasm.main_failed");
+          }
+        },
+      );
+      return handle;
+    } finally {
+      if (lease) await lease.release();
+    }
   }
 
   /**
@@ -533,9 +570,22 @@ export function createSessionManager(
   function deleteSave(
     moduleId: string,
     path: string,
+    expected?: SaveListEntry,
   ): Promise<HomePreparation> {
-    return runHomeOperation(
-      () => deletePreparedSave(moduleId, path),
+    return runProtectedHomeOperation(
+      "raw-save-delete",
+      moduleId,
+      () => deletePreparedSave(moduleId, path, expected),
+      "Another save operation is already active",
+    );
+  }
+
+  /** Refresh the save picker from durable storage under a short lock. */
+  function refreshHome(moduleId: string): Promise<HomePreparation> {
+    return runProtectedHomeOperation(
+      "continue-game",
+      moduleId,
+      async () => currentHomeOwner(moduleId, "refresh").preparation,
       "Another save operation is already active",
     );
   }
@@ -544,6 +594,7 @@ export function createSessionManager(
   async function deletePreparedSave(
     moduleId: string,
     path: string,
+    expected?: SaveListEntry,
   ): Promise<HomePreparation> {
     const owner = currentModule;
     if (
@@ -558,8 +609,14 @@ export function createSessionManager(
     if (owner.session) {
       throw new Error("Cannot delete a save while an active session owns Home");
     }
-    if (!owner.preparation.saves.some((save) => save.path === path)) {
+    const currentSave = owner.preparation.saves.find(
+      (save) => save.path === path,
+    );
+    if (!currentSave) {
       throw new Error("Save path is not listed by the current Home module");
+    }
+    if (expected && saveListRevision(expected) !== saveListRevision(currentSave)) {
+      throw new Error("Save changed in another page; review it before deleting");
     }
 
     let saves: SaveListEntry[];
@@ -601,6 +658,7 @@ export function createSessionManager(
     moduleId: string,
     operation: string,
   ): ModuleRecord & {
+    module: EmscriptenModule;
     storage: StorageService;
     preparation: HomePreparation;
   } {
@@ -609,6 +667,7 @@ export function createSessionManager(
       !owner
       || owner.closed
       || owner.moduleId !== moduleId
+      || !owner.module
       || !owner.storage
       || !owner.preparation
       || owner.session
@@ -618,9 +677,52 @@ export function createSessionManager(
       );
     }
     return owner as ModuleRecord & {
+      module: EmscriptenModule;
       storage: StorageService;
       preparation: HomePreparation;
     };
+  }
+
+  /** Return the prepared Home owner before a session claims its module. */
+  function currentHomeOwnerForSession(): ModuleRecord & {
+    module: EmscriptenModule;
+    storage: StorageService;
+    preparation: HomePreparation;
+  } {
+    const owner = currentModule;
+    if (
+      !owner
+      || owner.closed
+      || !owner.module
+      || !owner.storage
+      || !owner.preparation
+      || owner.session
+    ) {
+      throw new Error("No ready game module is available");
+    }
+    return owner as ModuleRecord & {
+      module: EmscriptenModule;
+      storage: StorageService;
+      preparation: HomePreparation;
+    };
+  }
+
+  /** Refresh a prepared module from durable IDBFS while its lock is held. */
+  async function refreshHomeStorage(
+    owner: ModuleRecord & {
+      storage: StorageService;
+      preparation: HomePreparation;
+    },
+  ): Promise<void> {
+    if (!owner.preparation.storageAvailable) return;
+    const saves = await owner.storage.refreshFromPersistent();
+    assertCurrentHomeModule(owner);
+    owner.preparation = { ...owner.preparation, saves };
+    options.dispatch({
+      type: "HOME_SAVES_UPDATED",
+      moduleId: owner.moduleId,
+      saves,
+    });
   }
 
   /**
@@ -632,7 +734,9 @@ export function createSessionManager(
     moduleId: string,
     request: RawSaveImportRequest,
   ): Promise<HomeSaveImportResult> {
-    return runHomeOperation(
+    return runProtectedHomeOperation(
+      "raw-save-import",
+      moduleId,
       () => importPreparedSave(moduleId, request),
       "Another save operation is already active",
     );
@@ -700,7 +804,9 @@ export function createSessionManager(
     moduleId: string,
     path: string,
   ): Promise<RawSaveExport> {
-    return runHomeOperation(
+    return runProtectedHomeOperation(
+      "raw-save-export",
+      moduleId,
       () => exportPreparedSave(moduleId, path),
       "Another save operation is already active",
     );
@@ -758,7 +864,7 @@ export function createSessionManager(
     moduleId: string,
     profile: BlissHackProfileV1,
   ): Promise<FullBackupExport> {
-    return runHomeOperation(async () => {
+    return runProtectedHomeOperation("full-backup-export", moduleId, async () => {
       const owner = currentHomeOwner(moduleId, "backup export");
       if (!owner.preparation.storageAvailable) {
         throw new Error("Persistent save storage is unavailable");
@@ -766,7 +872,7 @@ export function createSessionManager(
       try {
         const text = await createFullBackup(
           owner.storage,
-          profile,
+          options.loadProfile?.() ?? profile,
           PRODUCT_VERSION,
           BUILD_ID,
         );
@@ -801,12 +907,13 @@ export function createSessionManager(
     moduleId: string,
     bytes: Uint8Array,
   ): Promise<BackupImportPreview> {
-    return runHomeOperation(async () => {
+    return runProtectedHomeOperation("full-backup-preview", moduleId, async () => {
       const owner = currentHomeOwner(moduleId, "backup preview");
       if (!owner.preparation.storageAvailable) {
         throw new Error("Persistent save storage is unavailable");
       }
       try {
+        options.loadProfile?.();
         return await createBackupPreview(owner.storage, bytes);
       } catch (error) {
         recordDiagnostic({
@@ -827,10 +934,17 @@ export function createSessionManager(
     preview: BackupImportPreview,
     overwriteFileNames: ReadonlySet<string>,
   ): Promise<FullBackupImportResult> {
-    return runHomeOperation(async () => {
+    return runProtectedHomeOperation("full-backup-import", moduleId, async () => {
       const owner = currentHomeOwner(moduleId, "backup import");
       let summary: BackupImportSummary;
       try {
+        const refreshedPreview = await refreshBackupPreview(
+          owner.storage,
+          preview,
+        );
+        if (!backupPreviewMatches(preview, refreshedPreview)) {
+          throw new BackupPreviewStaleError(refreshedPreview);
+        }
         summary = await importBackupSaves(
           owner.storage,
           preview,
@@ -893,7 +1007,7 @@ export function createSessionManager(
     localData: LocalDataStore,
     resetLocalState: () => void,
   ): Promise<HomePreparation> {
-    return runHomeOperation(async () => {
+    return runProtectedHomeOperation("clear-local-data", moduleId, async () => {
       const owner = currentHomeOwner(moduleId, "clear");
       let localSnapshot: ReturnType<LocalDataStore["snapshot"]>;
       try {
@@ -1015,6 +1129,98 @@ export function createSessionManager(
       if (homeOperationPromise === promise) homeOperationPromise = null;
     }).catch(() => undefined);
     return promise;
+  }
+
+  /** Acquire a short cross-page lock and preserve stable failure categories. */
+  async function runWithGameLock<T>(
+    operation: GameLockOperation,
+    callback: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await gameLock.runExclusive(operation, callback);
+    } catch (error) {
+      recordGameLockFailure(operation, error);
+      throw error;
+    }
+  }
+
+  /** Serialize, lock, and refresh one operation owned by the prepared Home. */
+  function runProtectedHomeOperation<T>(
+    operation: GameLockOperation,
+    moduleId: string,
+    callback: () => Promise<T>,
+    busyMessage: string,
+  ): Promise<T> {
+    return runHomeOperation(
+      () => runWithGameLock(operation, async () => {
+        const owner = currentHomeOwner(moduleId, operation);
+        if (gameLock.supported) await refreshHomeStorage(owner);
+        return callback();
+      }),
+      busyMessage,
+    );
+  }
+
+  /** Acquire the long-lived lock which will be transferred to a session. */
+  async function acquireSessionLease(
+    operation: Extract<GameLockOperation, "new-game" | "continue-game">,
+  ): Promise<GameLockLease> {
+    try {
+      const lease = await gameLock.acquireLease(operation);
+      recordDiagnostic({
+        level: "info",
+        area: "session",
+        event: "game_lock.session_acquired",
+        moduleId: currentModule?.moduleId ?? null,
+      });
+      return lease;
+    } catch (error) {
+      recordGameLockFailure(operation, error);
+      throw error;
+    }
+  }
+
+  /** Run one profile action under the Home lock or the active session lease. */
+  function runProfileOperation<T>(
+    operation: Extract<
+      GameLockOperation,
+      "profile-save" | "profile-import" | "profile-export"
+    >,
+    callback: () => Promise<T>,
+  ): Promise<T> {
+    const session = currentModule?.session;
+    if (session && !session.closed) {
+      return Promise.resolve().then(callback);
+    }
+    return runHomeOperation(
+      () => runWithGameLock(operation, callback),
+      "Another profile operation is already active",
+    );
+  }
+
+  /** Record lock contention and browser request failures without user data. */
+  function recordGameLockFailure(
+    _operation: GameLockOperation,
+    error: unknown,
+  ): void {
+    if (error instanceof GameLockConflictError) {
+      recordDiagnostic({
+        level: "warning",
+        area: "storage",
+        event: "game_lock.conflict",
+        moduleId: currentModule?.moduleId ?? null,
+        sessionId: currentModule?.session?.sessionId ?? null,
+      });
+    } else if (error instanceof GameLockRequestError) {
+      recordDiagnostic({
+        level: "warning",
+        area: "storage",
+        event: "game_lock.request_failed",
+        moduleId: currentModule?.moduleId ?? null,
+        sessionId: currentModule?.session?.sessionId ?? null,
+        detail: { errorName: diagnosticErrorName(error.cause) },
+      });
+    }
   }
 
   /** Register the callback owned by one session and module. */
@@ -1189,6 +1395,21 @@ export function createSessionManager(
         initializePromise = null;
         startPromise = null;
       }
+      try {
+        await session.lockLease.release();
+        recordDiagnostic({
+          level: "info",
+          area: "session",
+          event: "game_lock.session_released",
+          moduleId: owner.moduleId,
+          sessionId: session.sessionId,
+        });
+      } catch (error) {
+        recordGameLockFailure(
+          session.continuation ? "continue-game" : "new-game",
+          error,
+        );
+      }
       if (prepareNext && !disposed) {
         const nextModuleId = createModuleId();
         options.dispatch({
@@ -1308,7 +1529,7 @@ export function createSessionManager(
     disposed = true;
     const owner = currentModule;
     if (!owner) return;
-    if (owner.storage) {
+    if (owner.storage && owner.session) {
       try {
         await owner.storage.flush();
       } catch (error) {
@@ -1342,6 +1563,7 @@ export function createSessionManager(
   return {
     initialize,
     startSession,
+    refreshHome,
     deleteSave,
     importSave,
     exportSave,
@@ -1349,12 +1571,14 @@ export function createSessionManager(
     previewFullBackup,
     importFullBackup,
     clearLocalData,
+    runProfileOperation,
     cleanupSession,
     reportFatal,
     recoverHome,
     dispose,
     getActiveSession: () => currentModule?.session?.handle ?? null,
     getHomePreparation: () => currentModule?.preparation ?? null,
+    isGameLockSupported: () => gameLock.supported,
     isWaitingForInput: () => {
       const session = currentModule?.session;
       return session !== null
@@ -1391,6 +1615,16 @@ function safeDownloadName(playerName: string): string {
     .join("")
     .replace(/[. ]+$/g, "");
   return safeName || "nethack-save";
+}
+
+/** Build the metadata revision bound to one destructive save confirmation. */
+function saveListRevision(save: SaveListEntry): string {
+  const validation = save.status === "ready"
+    ? `${save.identity.playerName}:${save.identity.role}:${save.identity.race}:${
+      save.identity.gender
+    }:${save.identity.alignment}`
+    : `${save.status}:${save.reason}`;
+  return `${save.path}:${save.modifiedAt ?? "unknown"}:${validation}`;
 }
 
 /** Throw when a storage operation no longer belongs to the current Home. */
