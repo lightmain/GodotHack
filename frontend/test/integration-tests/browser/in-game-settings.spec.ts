@@ -62,12 +62,11 @@ test("pauses only at command input and synchronizes in-game settings", async ({
   await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: "Save and Exit" }).click();
-  await expect(page.getByText("--More--", { exact: true })).toBeVisible();
-  await expect(page.getByText(/Really save/)).toHaveCount(0);
-  await page.keyboard.press("Space");
   await expect(page.getByRole("button", { name: "New Game" })).toBeVisible({
     timeout: 15_000,
   });
+  await expect(page.getByText(/Really save/)).toHaveCount(0);
+  await expect(page.getByText("--More--", { exact: true })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Settings" }).click();
   await expect(page.getByRole("radio", { name: "Large" })).toBeChecked();

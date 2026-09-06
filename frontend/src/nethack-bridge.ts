@@ -199,7 +199,7 @@ const INTERNALCMD = 0x0040;
 let pendingAction: PendingAction | null = null;
 const queuedKeys: number[] = [];
 let typeaheadEnabled = false;
-let autoConfirmSaveExit = false;
+let saveExitAutomation: "confirm" | "display" | null = null;
 let knownSaveNames: string[] = [];
 let pendingRuntimeSettings: RuntimeNetHackSettings | null = null;
 
@@ -481,13 +481,13 @@ export function sendKey(value: number): void {
 }
 
 /**
- * Send the native save command and auto-confirm only its immediate save prompt.
- * The intent is armed only while the core is waiting for a regular key.
+ * Send the native save command and skip its immediate confirmation and display.
+ * The intent is armed only while the core is waiting for a top-level command.
  * @returns nothing; unsupported input states leave the bridge unchanged.
  */
 export function requestSaveAndExit(): void {
   if (pendingAction?.kind !== "key" || !pendingAction.commandInput) return;
-  autoConfirmSaveExit = true;
+  saveExitAutomation = "confirm";
   sendKey(SAVE_COMMAND);
 }
 
@@ -631,7 +631,7 @@ export function resetBridgeState(): void {
   pendingRuntimeSettings = null;
   queuedKeys.length = 0;
   typeaheadEnabled = false;
-  autoConfirmSaveExit = false;
+  saveExitAutomation = null;
   knownSaveNames = [];
   resetGameState();
 }
@@ -978,6 +978,14 @@ function displayWindow(
 ): Promise<void> | undefined {
   flushDisplay();
   const window = getWindow(winid);
+  if (
+    saveExitAutomation === "display"
+    && blocking
+    && window?.type === NHW_MESSAGE
+  ) {
+    saveExitAutomation = null;
+    return undefined;
+  }
   const needsAcknowledgement = blocking
     || (window?.type !== NHW_MAP && window?.type !== NHW_MESSAGE);
   if (!needsAcknowledgement) return undefined;
@@ -1093,7 +1101,9 @@ function waitForKey(
   positionPointers: { x: number; y: number; modifier: number } | null,
   commandInput: boolean,
 ): Promise<number> {
-  if (commandInput && autoConfirmSaveExit) autoConfirmSaveExit = false;
+  if (commandInput && saveExitAutomation !== null) {
+    saveExitAutomation = null;
+  }
   setCommandInput(commandInput);
   const queued = queuedKeys.shift();
   if (queued !== undefined) {
@@ -1124,11 +1134,14 @@ function waitForYn(
   defaultCode: number,
 ): Promise<number> {
   const normalizedQuery = query ?? "";
-  if (autoConfirmSaveExit) {
-    autoConfirmSaveExit = false;
+  if (saveExitAutomation === "confirm") {
     if (normalizedQuery === SAVE_CONFIRM_QUERY && choices === "yn") {
+      saveExitAutomation = "display";
       return Promise.resolve(YES_RESPONSE);
     }
+    saveExitAutomation = null;
+  } else if (saveExitAutomation === "display") {
+    saveExitAutomation = null;
   }
   setInputRequest({
     kind: "yn",

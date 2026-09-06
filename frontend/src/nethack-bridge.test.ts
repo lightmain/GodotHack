@@ -627,7 +627,12 @@ describe("key, position, and prompt input", () => {
     await expect(invalid).resolves.toBe(113);
   });
 
-  it("auto-confirms only the save prompt requested from command input", async () => {
+  it("skips only the save confirmation and its next blocking message", async () => {
+    const message = await shimCallback(
+      "shim_create_nhwindow",
+      NHW_MESSAGE,
+    ) as number;
+    const map = await shimCallback("shim_create_nhwindow", NHW_MAP) as number;
     const command = shimCallback(
       "shim_nh_poskey",
       0x300,
@@ -642,7 +647,22 @@ describe("key, position, and prompt input", () => {
     await expect(
       shimCallback("shim_yn_function", "Really save?", "yn", 110),
     ).resolves.toBe("y".charCodeAt(0));
+    await expect(
+      shimCallback("shim_display_nhwindow", map, false),
+    ).resolves.toBeUndefined();
+    await expect(
+      shimCallback("shim_display_nhwindow", message, true),
+    ).resolves.toBeUndefined();
     expect(getSnapshot().inputRequest).toBeNull();
+
+    const laterDisplay = shimCallback("shim_display_nhwindow", message, true);
+    await expectPending(laterDisplay);
+    expect(getSnapshot().inputRequest).toMatchObject({
+      kind: "message",
+      message: "--More--",
+    });
+    sendKey(" ".charCodeAt(0));
+    await expect(laterDisplay).resolves.toBeUndefined();
   });
 
   it("clears save auto-confirmation when the next yn prompt does not match", async () => {
