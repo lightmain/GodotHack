@@ -1,8 +1,10 @@
 /* NetHack 5.0 winshim.c    $NHDT-Date: 1781973099 2026/06/20 16:31:39 $  $NHDT-Branch: NetHack-5.0 $:$NHDT-Revision: 1.34 $ */
 /* Copyright (c) Adam Powers, 2020                                */
 /* NetHack may be freely redistributed.  See license for details. */
-/* Modified for BlissHack by lightmain, 2026-09-02: preserve character
- * selection quit semantics and expose narrow browser save helpers. */
+/* Modified for BlissHack by lightmain, 2026-09-02 and 2026-09-06:
+ * preserve character selection quit semantics, expose narrow browser save
+ * helpers, and synchronize a fixed set of in-game options at command
+ * boundaries. */
 
 /* not an actual windowing port, but a fake win port for libnethack */
 
@@ -172,7 +174,215 @@ void name fn_args { \
 VDECLCB(shim_init_nhwindows,(int *argcp, char **argv), "vpp", P2V argcp, P2V argv)
 DECLCB(boolean, shim_player_selection_or_tty,(void), "b")
 VDECLCB(shim_askname,(void), "v")
+#ifdef __EMSCRIPTEN__
+#define SHIM_SETTINGS_VERSION 1U
+#define SHIM_SETTINGS_PENDING (1U << 0)
+#define SHIM_SETTINGS_AUTOPICKUP (1U << 1)
+#define SHIM_SETTINGS_SAFE_PET (1U << 2)
+#define SHIM_SETTINGS_SORTPACK (1U << 3)
+#define SHIM_SETTINGS_SHOWEXP (1U << 4)
+#define SHIM_SETTINGS_TIME (1U << 5)
+#define SHIM_SETTINGS_PICKUP_ALL (1U << 6)
+#define SHIM_SETTINGS_NUMPAD_SHIFT 7
+#define SHIM_SETTINGS_NUMPAD_MASK (7U << SHIM_SETTINGS_NUMPAD_SHIFT)
+#define SHIM_SETTINGS_PICKUP_SHIFT 10
+#define SHIM_SETTINGS_PICKUP_MASK (0x7fffU << SHIM_SETTINGS_PICKUP_SHIFT)
+#define SHIM_SETTINGS_VERSION_SHIFT 28
+#define SHIM_SETTINGS_VERSION_MASK (7U << SHIM_SETTINGS_VERSION_SHIFT)
+#define SHIM_SETTINGS_DEFINED_MASK \
+    (SHIM_SETTINGS_PENDING | SHIM_SETTINGS_AUTOPICKUP \
+     | SHIM_SETTINGS_SAFE_PET | SHIM_SETTINGS_SORTPACK \
+     | SHIM_SETTINGS_SHOWEXP | SHIM_SETTINGS_TIME \
+     | SHIM_SETTINGS_PICKUP_ALL | SHIM_SETTINGS_NUMPAD_MASK \
+     | SHIM_SETTINGS_PICKUP_MASK | SHIM_SETTINGS_VERSION_MASK)
+
+static const char shim_pickup_symbols[] = "$\")[%?+!=/(*`0_";
+static const int shim_numpad_modes[] = { 0, 1, 2, 3, 4, -1 };
+
+/* Encode the seven supported live options in the versioned WASM payload. */
+static unsigned int
+shim_settings_snapshot(void)
+{
+    unsigned int payload = SHIM_SETTINGS_VERSION
+                           << SHIM_SETTINGS_VERSION_SHIFT;
+    const char *value;
+    int i, mode = 0;
+
+    if (flags.pickup)
+        payload |= SHIM_SETTINGS_AUTOPICKUP;
+    if (flags.safe_dog)
+        payload |= SHIM_SETTINGS_SAFE_PET;
+    if (flags.sortpack)
+        payload |= SHIM_SETTINGS_SORTPACK;
+    if (flags.showexp)
+        payload |= SHIM_SETTINGS_SHOWEXP;
+    if (flags.time)
+        payload |= SHIM_SETTINGS_TIME;
+
+    value = get_option_value("pickup_types", TRUE);
+    if (value && !strcmp(value, "all")) {
+        payload |= SHIM_SETTINGS_PICKUP_ALL;
+    } else if (value) {
+        for (i = 0; shim_pickup_symbols[i]; ++i)
+            if (strchr(value, shim_pickup_symbols[i]))
+                payload |= 1U << (SHIM_SETTINGS_PICKUP_SHIFT + i);
+    }
+
+    value = get_option_value("number_pad", TRUE);
+    if (value) {
+        mode = atoi(value);
+        for (i = 0; i < SIZE(shim_numpad_modes); ++i)
+            if (shim_numpad_modes[i] == mode)
+                break;
+        mode = i;
+    }
+    payload |= (unsigned int) mode << SHIM_SETTINGS_NUMPAD_SHIFT;
+    return payload;
+}
+
+/* Reject malformed or unsupported payloads before option parsing. */
+static boolean
+shim_settings_payload_valid(unsigned int payload, boolean require_pending)
+{
+    unsigned int version, numpad, pickup;
+
+    if (payload & ~SHIM_SETTINGS_DEFINED_MASK)
+        return FALSE;
+    version = (payload & SHIM_SETTINGS_VERSION_MASK)
+              >> SHIM_SETTINGS_VERSION_SHIFT;
+    if (version != SHIM_SETTINGS_VERSION)
+        return FALSE;
+    if (require_pending && !(payload & SHIM_SETTINGS_PENDING))
+        return FALSE;
+    numpad = (payload & SHIM_SETTINGS_NUMPAD_MASK)
+             >> SHIM_SETTINGS_NUMPAD_SHIFT;
+    if (numpad >= SIZE(shim_numpad_modes))
+        return FALSE;
+    pickup = (payload & SHIM_SETTINGS_PICKUP_MASK)
+             >> SHIM_SETTINGS_PICKUP_SHIFT;
+    if ((payload & SHIM_SETTINGS_PICKUP_ALL) && pickup)
+        return FALSE;
+    if (!(payload & SHIM_SETTINGS_PICKUP_ALL) && !pickup)
+        return FALSE;
+    return TRUE;
+}
+
+/* Apply one validated complete payload through NetHack's option parser. */
+static boolean
+shim_apply_settings(unsigned int payload)
+{
+    char opts[BUFSZ], *op;
+    unsigned int pickup;
+    int i, numpad;
+    boolean applied = TRUE, old_opt_initial = go.opt_initial,
+            old_opt_from_file = go.opt_from_file,
+            old_sortpack = flags.sortpack,
+            old_showexp = flags.showexp, old_time = flags.time;
+
+#define SHIM_APPLY_BOOLEAN(name, bit) \
+    Sprintf(opts, "%s" name, (payload & (bit)) ? "" : "!"); \
+    if (!parseoptions(opts, TRUE, FALSE)) { \
+        applied = FALSE; \
+        goto shim_apply_done; \
+    }
+
+    if (!shim_settings_payload_valid(payload, FALSE))
+        return FALSE;
+    SHIM_APPLY_BOOLEAN("autopickup", SHIM_SETTINGS_AUTOPICKUP);
+
+    if (payload & SHIM_SETTINGS_PICKUP_ALL) {
+        Strcpy(opts, "pickup_types:all");
+    } else {
+        Strcpy(opts, "pickup_types:");
+        op = eos(opts);
+        pickup = (payload & SHIM_SETTINGS_PICKUP_MASK)
+                 >> SHIM_SETTINGS_PICKUP_SHIFT;
+        for (i = 0; shim_pickup_symbols[i]; ++i)
+            if (pickup & (1U << i))
+                *op++ = shim_pickup_symbols[i];
+        *op = '\0';
+    }
+    if (!parseoptions(opts, TRUE, FALSE)) {
+        applied = FALSE;
+        goto shim_apply_done;
+    }
+
+    numpad = (payload & SHIM_SETTINGS_NUMPAD_MASK)
+             >> SHIM_SETTINGS_NUMPAD_SHIFT;
+    Sprintf(opts, "number_pad:%d", shim_numpad_modes[numpad]);
+    if (!parseoptions(opts, TRUE, FALSE)) {
+        applied = FALSE;
+        goto shim_apply_done;
+    }
+    SHIM_APPLY_BOOLEAN("safe_pet", SHIM_SETTINGS_SAFE_PET);
+    SHIM_APPLY_BOOLEAN("sortpack", SHIM_SETTINGS_SORTPACK);
+    SHIM_APPLY_BOOLEAN("showexp", SHIM_SETTINGS_SHOWEXP);
+    SHIM_APPLY_BOOLEAN("time", SHIM_SETTINGS_TIME);
+shim_apply_done:
+#undef SHIM_APPLY_BOOLEAN
+    go.opt_initial = old_opt_initial;
+    go.opt_from_file = old_opt_from_file;
+    if (applied && (flags.showexp != old_showexp || flags.time != old_time)) {
+        if (VIA_WINDOWPORT())
+            status_initialize(REASSESS_ONLY);
+        disp.botl = TRUE;
+    }
+    if (applied && flags.sortpack != old_sortpack)
+        update_inventory();
+    return applied;
+}
+
+/* Publish a snapshot and retrieve at most one pending TypeScript update. */
+static int
+shim_settings_sync(int snapshot)
+{
+    void *args[] = { &snapshot };
+    int update = 0;
+
+    if (shim_callback_name)
+        local_callback(shim_callback_name, "shim_settings_sync",
+                       (void *) &update, "ii", args);
+    return update;
+}
+
+/* Report whether an update applied and return the authoritative snapshot. */
+static void
+shim_settings_result(int success, int snapshot)
+{
+    void *args[] = { &success, &snapshot };
+
+    if (shim_callback_name)
+        local_callback(shim_callback_name, "shim_settings_result",
+                       NULL, "vii", args);
+}
+
+/* Exchange runtime settings at the existing command-loop safe boundary. */
+void
+shim_get_nh_event(void)
+{
+    unsigned int before = shim_settings_snapshot(),
+                 update = (unsigned int) shim_settings_sync((int) before),
+                 after;
+    boolean valid, applied = FALSE;
+
+    if (!update)
+        return;
+    valid = shim_settings_payload_valid(update, TRUE);
+    if (valid)
+        applied = shim_apply_settings(update);
+    after = shim_settings_snapshot();
+    if (applied
+        && after != (update & ~SHIM_SETTINGS_PENDING))
+        applied = FALSE;
+    if (!applied && valid) {
+        (void) shim_apply_settings(before);
+        after = shim_settings_snapshot();
+    }
+    shim_settings_result(applied ? 1 : 0, (int) after);
+}
+#else
 VDECLCB(shim_get_nh_event,(void), "v")
+#endif
 VDECLCB(shim_exit_nhwindows,(const char *str), "vs", P2V str)
 VDECLCB(shim_suspend_nhwindows,(const char *str), "vs", P2V str)
 VDECLCB(shim_resume_nhwindows,(void), "v")
@@ -199,8 +409,36 @@ VDECLCB(shim_update_positionbar,(char *posbar), "vs", P2V posbar)
 VDECLCB(shim_print_glyph,(winid w, coordxy x, coordxy y, const glyph_info *glyphinfo, const glyph_info *bkglyphinfo), "vi11pp", A2P w, A2P x, A2P y, P2V glyphinfo, P2V bkglyphinfo)
 VDECLCB(shim_raw_print,(const char *str), "vs", P2V str)
 VDECLCB(shim_raw_print_bold,(const char *str), "vs", P2V str)
+#ifdef __EMSCRIPTEN__
+/* Wait for one key and expose whether the core expects a top-level command. */
+int
+shim_nhgetch(void)
+{
+    int input_state = program_state.input_state, result = 0;
+    void *args[] = { &input_state };
+
+    if (shim_callback_name)
+        local_callback(shim_callback_name, "shim_nhgetch",
+                       (void *) &result, "ii", args);
+    return result;
+}
+
+/* Wait for a key or position and append the current input state to the ABI. */
+int
+shim_nh_poskey(coordxy *x, coordxy *y, int *mod)
+{
+    int input_state = program_state.input_state, result = 0;
+    void *args[] = { x, y, mod, &input_state };
+
+    if (shim_callback_name)
+        local_callback(shim_callback_name, "shim_nh_poskey",
+                       (void *) &result, "ipppi", args);
+    return result;
+}
+#else
 DECLCB(int, shim_nhgetch,(void), "i")
 DECLCB(int, shim_nh_poskey,(coordxy *x, coordxy *y, int *mod), "ippp", P2V x, P2V y, P2V mod)
+#endif
 VDECLCB(shim_nhbell,(void), "v")
 DECLCB(int, shim_doprev_message,(void),"iv")
 DECLCB(char, shim_yn_function,(const char *query, const char *resp, char def), "css0", P2V query, P2V resp, A2P def)

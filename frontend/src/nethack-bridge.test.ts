@@ -21,6 +21,8 @@ import {
   isWaitingForInput,
   normalizePlayerNameInput,
   preparePlayerNamePrompt,
+  queueRuntimeSettings,
+  requestSaveAndExit,
   resetBridgeState,
   sendKey,
   sendPosition,
@@ -35,6 +37,8 @@ import {
   validateSaveMetadata,
   type EmscriptenModule,
 } from "./nethack-bridge";
+import { createDefaultProfile } from "./settings/profile";
+import { encodeRuntimeSettings } from "./settings/runtime-settings-protocol";
 
 interface MockModuleHarness {
   module: EmscriptenModule;
@@ -541,6 +545,32 @@ describe("key, position, and prompt input", () => {
     expect(harness.readI32(0x304)).toBe(-1);
   });
 
+  it("reports command input only while the matching key request is pending", async () => {
+    const command = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      1,
+    );
+    expect(getSnapshot().commandInput).toBe(true);
+
+    sendKey(27);
+    await expect(command).resolves.toBe(27);
+    expect(getSnapshot().commandInput).toBe(false);
+
+    const direction = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      3,
+    );
+    expect(getSnapshot().commandInput).toBe(false);
+    sendKey("h".charCodeAt(0));
+    await expect(direction).resolves.toBe("h".charCodeAt(0));
+  });
+
   it("buffers a short burst typed before the core requests its next keys", async () => {
     const first = shimCallback("shim_nhgetch");
     sendKey("l".charCodeAt(0));
@@ -597,6 +627,101 @@ describe("key, position, and prompt input", () => {
     await expect(invalid).resolves.toBe(113);
   });
 
+  it("skips only the save confirmation and its next blocking message", async () => {
+    const message = await shimCallback(
+      "shim_create_nhwindow",
+      NHW_MESSAGE,
+    ) as number;
+    const map = await shimCallback("shim_create_nhwindow", NHW_MAP) as number;
+    const command = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      1,
+    );
+
+    requestSaveAndExit();
+
+    await expect(command).resolves.toBe("S".charCodeAt(0));
+    await expect(
+      shimCallback("shim_yn_function", "Really save?", "yn", 110),
+    ).resolves.toBe("y".charCodeAt(0));
+    await expect(
+      shimCallback("shim_display_nhwindow", map, false),
+    ).resolves.toBeUndefined();
+    await expect(
+      shimCallback("shim_display_nhwindow", message, true),
+    ).resolves.toBeUndefined();
+    expect(getSnapshot().inputRequest).toBeNull();
+
+    const laterDisplay = shimCallback("shim_display_nhwindow", message, true);
+    await expectPending(laterDisplay);
+    expect(getSnapshot().inputRequest).toMatchObject({
+      kind: "message",
+      message: "--More--",
+    });
+    sendKey(" ".charCodeAt(0));
+    await expect(laterDisplay).resolves.toBeUndefined();
+  });
+
+  it("clears save auto-confirmation when the next yn prompt does not match", async () => {
+    const command = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      1,
+    );
+    requestSaveAndExit();
+    await expect(command).resolves.toBe("S".charCodeAt(0));
+
+    const unrelated = shimCallback(
+      "shim_yn_function",
+      "Really quit?",
+      "yn",
+      110,
+    );
+    await expectPending(unrelated);
+    sendKey("n".charCodeAt(0));
+    await expect(unrelated).resolves.toBe("n".charCodeAt(0));
+
+    const laterSave = shimCallback(
+      "shim_yn_function",
+      "Really save?",
+      "yn",
+      110,
+    );
+    await expectPending(laterSave);
+    sendKey("n".charCodeAt(0));
+    await expect(laterSave).resolves.toBe("n".charCodeAt(0));
+  });
+
+  it("does not arm save auto-confirmation outside command input", async () => {
+    const direction = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      3,
+    );
+
+    requestSaveAndExit();
+    await expectPending(direction);
+    sendKey("h".charCodeAt(0));
+    await expect(direction).resolves.toBe("h".charCodeAt(0));
+
+    const savePrompt = shimCallback(
+      "shim_yn_function",
+      "Really save?",
+      "yn",
+      110,
+    );
+    await expectPending(savePrompt);
+    sendKey("n".charCodeAt(0));
+    await expect(savePrompt).resolves.toBe("n".charCodeAt(0));
+  });
+
   it("returns q unchanged for the unrestricted role-selection prompt", async () => {
     const requested = shimCallback(
       "shim_yn_function",
@@ -637,6 +762,82 @@ describe("key, position, and prompt input", () => {
     expect(getSnapshot().numberPad).toBe(true);
     await shimCallback("shim_number_pad", 0);
     expect(getSnapshot().numberPad).toBe(false);
+  });
+});
+
+describe("runtime settings synchronization", () => {
+  it("publishes snapshots and returns one queued update at a command boundary", async () => {
+    const initial = createDefaultProfile().nethack;
+    const initialPayload = encodeRuntimeSettings(initial, false);
+
+    await expect(
+      shimCallback("shim_settings_sync", initialPayload),
+    ).resolves.toBe(0);
+    expect(getSnapshot().runtimeSettings).toMatchObject({
+      autopickup: true,
+      numberPad: 0,
+      showTime: false,
+    });
+    expect(getSnapshot().runtimeSettingsStatus).toBe("idle");
+
+    const requested = createDefaultProfile().nethack;
+    requested.autopickup = false;
+    requested.numberPad = -1;
+    requested.showTime = true;
+    queueRuntimeSettings(requested);
+    expect(getSnapshot().runtimeSettingsStatus).toBe("pending");
+
+    await expect(
+      shimCallback("shim_settings_sync", initialPayload),
+    ).resolves.toBe(encodeRuntimeSettings(requested, true));
+    expect(getSnapshot().runtimeSettingsStatus).toBe("pending");
+
+    await shimCallback(
+      "shim_settings_result",
+      1,
+      encodeRuntimeSettings(requested, false),
+    );
+    expect(getSnapshot().runtimeSettings).toEqual({
+      autopickup: false,
+      pickupTypes: { mode: "all" },
+      numberPad: -1,
+      safePet: true,
+      sortpack: true,
+      showExperience: false,
+      showTime: true,
+    });
+    expect(getSnapshot().runtimeSettingsStatus).toBe("applied");
+
+    await shimCallback(
+      "shim_settings_sync",
+      encodeRuntimeSettings(requested, false),
+    );
+    expect(getSnapshot().runtimeSettingsStatus).toBe("idle");
+  });
+
+  it("turns malformed snapshots and rejected updates into runtime errors", async () => {
+    await expect(shimCallback("shim_settings_sync", 0)).resolves.toBe(0);
+    expect(getSnapshot()).toMatchObject({
+      phase: "error",
+      error: expect.stringContaining("shim_settings_sync"),
+    });
+
+    resetBridgeState();
+    const settings = createDefaultProfile().nethack;
+    queueRuntimeSettings(settings);
+    await shimCallback(
+      "shim_settings_sync",
+      encodeRuntimeSettings(settings, false),
+    );
+    await shimCallback(
+      "shim_settings_result",
+      0,
+      encodeRuntimeSettings(settings, false),
+    );
+    expect(getSnapshot()).toMatchObject({
+      phase: "error",
+      error: expect.stringContaining("rejected"),
+    });
   });
 });
 

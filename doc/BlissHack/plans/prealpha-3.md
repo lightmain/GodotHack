@@ -62,6 +62,7 @@ WebAssembly 运行时。
 - 固定 Node.js 和 Emscripten 版本。
 - 自动完成 WebAssembly 清理、编译、复制和运行时文件校验的命令。
 - Settings 页面及其从 Home 返回的完整导航。
+- 游戏主命令等待时由 Esc 打开的暂停界面，以及从暂停界面进入 Settings。
 - 三项首版界面配置：
   - 终端文字大小。
   - 消息区域保留的行数。
@@ -222,7 +223,8 @@ Emscripten 版本。SHA-256 是根据文件全部字节计算的固定摘要，�
 7. 导入个人配置后，哪些字段立即生效，哪些字段从下一局开始生效。
 8. 配置损坏、浏览器本地存储不可用或运行时配置文件解析失败时如何恢复默认值。
 
-用户确认文档前，不实现配置持久化或 `.nethackrc` 写入。
+用户已于 2026-09-06 确认开始按该文档分步实施。暂停界面、游戏内 Settings
+和 NetHack 配置双向同步以评审文档中的补充设计为准。
 
 ### 5.2 界面配置
 
@@ -267,7 +269,11 @@ time
   不猜测数值含义。
 - Settings 中显示每个配置的简短效果说明和生效时间。
 - NetHack 配置在下一次创建游戏会话前写入运行时配置文件。
-- 已经运行的游戏不会被 Settings 从外部修改。
+- 游戏内 Settings 只在核心等待主命令时修改七项允许动态修改的配置；
+  `tutorial` 只影响下次新游戏。
+- 图形 Settings 和 `O`、`#optionsfull`、`@` 等原生命令产生的受支持配置变化
+  通过限定字段的 shim 协议双向同步，不使用 Asyncify 等待期间的额外
+  `ccall()`。
 - 配置文件生成顺序固定，便于测试和比较。
 - 不支持的选项、重复选项和任意配置指令不得通过结构化表单写入。
 
@@ -283,6 +289,8 @@ perminv_mode
 ### 5.4 Settings 界面
 
 - Home 的 `Settings` 按钮启用并进入独立 Settings screen。
+- 游戏在主命令等待状态时，Esc 打开包含 `Resume`、`Settings` 和
+  `Save and Exit` 的暂停界面；其他输入状态中的 Esc 保留 NetHack 原意。
 - Settings screen 使用一个页面表单，不把每个选项放进独立卡片。
 - 页面分为 `Interface`、`NetHack` 和 `Profile` 三个区段。
 - 布尔值使用开关，固定集合使用选择菜单，多选集合使用复选框。
@@ -290,8 +298,10 @@ perminv_mode
   `Import Profile`。
 - `Apply` 只在配置发生变化且校验通过时启用。
 - 离开页面时如果存在未保存修改，显示离开确认。
-- 完成保存后返回 Home；game module 尚未调用 `main()` 时，必须确保下一局
-  读取新配置。
+- 从 Home 完成保存后返回 Home；game module 尚未调用 `main()` 时，必须确保
+  下一局读取新配置。
+- 从暂停界面进入 Settings 时复用同一表单；完成后返回暂停界面，并在安全命令
+  边界应用当前游戏允许修改的 NetHack 配置。
 - 顶层应用状态机增加 Settings 状态，并保留进入 Settings 前已经准备好的
   game module。打开或取消 Settings 不创建新 module，也不调用 `main()`。
 - 所有控件具有可见标签、键盘焦点和错误说明。
@@ -319,7 +329,9 @@ perminv_mode
 - 导入前显示将改变的字段，玩家确认后才保存。
 - 文件不包含角色名、存档、诊断日志、构建路径或浏览器信息。
 - 导入失败时现有配置保持不变。
-- 导入成功后界面配置立即生效，NetHack 配置从下一局开始生效。
+- 从 Home 导入成功后界面配置立即生效，NetHack 配置按新游戏和继续存档规则
+  生效；游戏中导入时，七项动态配置在安全命令边界应用，`tutorial` 从下次
+  新游戏开始生效。
 
 ### 5.6 单元测试要求
 
@@ -333,6 +345,8 @@ perminv_mode
 - 导入失败不会产生部分更新。
 - 运行时配置文件内容顺序固定，并且只包含允许的 NetHack 配置。
 - 新游戏启动前能够读取刚保存的 NetHack 配置。
+- 游戏内原生命令修改受支持配置后，图形 Settings 显示核心回报的实际值。
+- 恢复存档后的初始配置快照不会静默覆盖个人默认配置。
 
 ### 5.7 自动验收标准
 
@@ -342,6 +356,11 @@ perminv_mode
 - 修改 `number_pad` 后，方向输入仍然符合 NetHack 当前模式。
 - 个人配置 JSON 可以解析且不包含玩家名、存档或诊断内容。
 - Settings 的键盘导航、保存、取消和离开确认测试通过。
+- Esc 只在主命令等待时打开暂停界面；Resume 不向核心发送输入。
+- `Save and Exit` 自动回答对应的 `Really save?` 和随后唯一一次阻塞消息，
+  其余保存、flush 和退出流程与键盘 `S` 相同；直接按 `S` 仍显示原生确认和
+  `--More--`。
+- 游戏内图形修改与原生命令修改能够双向同步。
 
 ### 5.8 手动观察标准
 
@@ -349,6 +368,32 @@ perminv_mode
 - 每个配置名称、说明和控件之间关系明确。
 - 界面配置生效时没有明显布局跳动或文字重叠。
 - 配置文件可以在另一个全新浏览器配置中导入。
+
+### 5.9 阶段结果
+
+阶段二已于 2026-09-06 完成：
+
+- 使用 `blisshack.profile.v1` 原子保存界面和 NetHack 个人配置；每个 game
+  module 启动前生成临时 `.nethackrc`，IDBFS 仍只负责 `/save`。
+- Home 和游戏内 Settings 复用同一套结构化表单；`.bhprofile` 支持严格校验、
+  差异预览、导入、导出和恢复默认值。
+- 主命令等待时 Esc 打开暂停界面；Resume 保留原输入，Save and Exit 自动
+  跳过确认及 `--More--` 并复用原生 `S` 保存退出流程，其他输入状态中的 Esc
+  保持 NetHack 行为。
+- 七项动态 NetHack 配置通过版本化 32-bit shim 协议在安全命令边界应用并
+  双向同步；React 不在 Asyncify 等待期间通过 `ccall()` 重入 WASM。
+- 使用锁定工具链重新生成并验证 `nethack.js`、`nethack.wasm` 和
+  `nethack-runtime.json`。
+
+最终验收结果：
+
+- `npm test`：32 个测试文件、319 项断言通过。
+- `npm run lint -- --deny-warnings`：0 warning、0 error。
+- `npm run build`：TypeScript 和 Vite 生产构建通过，运行时三件套校验通过。
+- `npm run test:integration:wasm`：33 项真实 WASM 断言通过。
+- `npm run test:integration:browser`：19 条 Chromium 流程通过。
+- 暂停菜单和游戏内 Settings 已检查窄视口布局、键盘焦点和遮罩关系，无重叠。
+- `git diff --check` 通过。
 
 ## 6. 阶段三：本地数据备份和存档救援
 

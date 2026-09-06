@@ -70,14 +70,14 @@ describe("HomeScreen", () => {
     expect(settingsIndex).toBeGreaterThan(continueIndex);
   });
 
-  it("keeps Home actions native and disables only unfinished Settings", () => {
+  it("keeps all Home commands enabled when storage is available", () => {
     const html = renderToStaticMarkup(createElement(HomeScreen, {
       onNewGame: vi.fn(),
     }));
 
     expect(buttonMarkup(html, "New Game")).not.toMatch(/\sdisabled(?:=|>)/i);
     expect(buttonMarkup(html, "Continue")).not.toMatch(/\sdisabled(?:=""|>)/i);
-    expect(buttonMarkup(html, "Settings")).toMatch(/\sdisabled(?:=""|>)/i);
+    expect(buttonMarkup(html, "Settings")).not.toMatch(/\sdisabled(?:=""|>)/i);
   });
 
   it("enables Continue with persistent storage even when import is the only action", () => {

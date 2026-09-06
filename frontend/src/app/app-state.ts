@@ -16,6 +16,11 @@ export type AppState =
     storageAvailable: boolean;
   }
   | {
+    phase: "settings";
+    moduleId: string;
+    storageAvailable: boolean;
+  }
+  | {
     phase: "session";
     moduleId: string;
     sessionId: string;
@@ -39,6 +44,8 @@ export type AppAction =
   }
   | { type: "SAVE_PICKER_OPENED"; moduleId: string }
   | { type: "SAVE_PICKER_CLOSED"; moduleId: string }
+  | { type: "SETTINGS_OPENED"; moduleId: string }
+  | { type: "SETTINGS_CLOSED"; moduleId: string }
   | {
     type: "HOME_SAVES_UPDATED";
     moduleId: string;
@@ -113,6 +120,25 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return isCurrentModule(state, action.moduleId)
         && state.phase === "home"
         ? { ...state, savePickerOpen: false }
+        : state;
+    case "SETTINGS_OPENED":
+      return isCurrentModule(state, action.moduleId)
+        && state.phase === "home"
+        ? {
+          phase: "settings",
+          moduleId: state.moduleId,
+          storageAvailable: state.storageAvailable,
+        }
+        : state;
+    case "SETTINGS_CLOSED":
+      return isCurrentModule(state, action.moduleId)
+        && state.phase === "settings"
+        ? {
+          phase: "home",
+          moduleId: state.moduleId,
+          savePickerOpen: false,
+          storageAvailable: state.storageAvailable,
+        }
         : state;
     case "HOME_SAVES_UPDATED":
       return isCurrentModule(state, action.moduleId)

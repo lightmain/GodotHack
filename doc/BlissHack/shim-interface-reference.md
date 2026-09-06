@@ -280,9 +280,9 @@ VDECLCB(shim_get_nh_event, (void), "v")
 
 | 项目 | 说明 |
 |------|------|
-| **fmt** | `"v"` — 返回 void，无参数 |
+| **fmt** | 原生 shim 为 `"v"`；BlissHack WASM 特殊实现不直接转发该回调 |
 | **调用时机** | 心跳事件，游戏核心定期调用。窗口端口可用来处理各种 X 事件 |
-| **JS 侧处理** | 通常为空实现 |
+| **JS 侧处理** | BlissHack 在此安全边界交换限定的运行时 Settings 快照，见第 6.3 节 |
 
 ---
 
@@ -608,10 +608,10 @@ DECLCB(int, shim_nhgetch, (void), "i")
 
 | 项目 | 说明 |
 |------|------|
-| **fmt** | `"i"` — 返回 int，无参数 |
+| **fmt** | 原生 shim 为 `"i"`；BlissHack WASM 为 `"ii"`，附加一个 `input_state` int |
 | **返回值** | 非零 NetHack 输入字节或命令字符值 |
 | **调用时机** | 游戏等待用户输入单个按键时（如 `--More--` 提示、方向键） |
-| **JS 侧处理** | 必须等待用户按键，返回 `1..255`，但排除 `0x80`。Ctrl 组合通常落在控制字符范围，Meta 字符使用 `0x80` 高位，因此不能把输入限制为可打印 ASCII。**这是一个异步回调——C 侧会阻塞等待返回** |
+| **JS 侧处理** | 必须等待用户按键，返回 `1..255`，但排除 `0x80`。附加值等于 `commandInp` (`1`) 时表示顶层命令输入。Ctrl 组合通常落在控制字符范围，Meta 字符使用 `0x80` 高位，因此不能把输入限制为可打印 ASCII。**这是一个异步回调——C 侧会阻塞等待返回** |
 
 接口明确禁止返回 `0` 以及 meta-zero（只设置 Meta 位的 `0x80`）。若平台支持
 `SAFERHANGUP`，挂断或 EOF 应映射为 ESC (`0x1b`)；当前 WASM 构建定义了
@@ -625,8 +625,8 @@ DECLCB(int, shim_nh_poskey, (coordxy *x, coordxy *y, int *mod), "ippp", P2V x, P
 
 | 项目 | 说明 |
 |------|------|
-| **fmt** | `"ippp"` — 返回 int，三个 pointer 参数 |
-| **参数** | `x` (pointer→int16): 鼠标点击的 x 坐标（输出参数）；`y` (pointer→int16): 鼠标点击的 y 坐标（输出参数）；`mod` (pointer→int32): 鼠标按钮修饰符（输出参数）|
+| **fmt** | 原生 shim 为 `"ippp"`；BlissHack WASM 为 `"ipppi"` |
+| **参数** | `x` (pointer→int16): 鼠标点击的 x 坐标（输出参数）；`y` (pointer→int16): 鼠标点击的 y 坐标（输出参数）；`mod` (pointer→int32): 鼠标按钮修饰符（输出参数）；WASM 末尾附加 `input_state` int |
 | **返回值** | 如果是键盘输入，返回非零 NetHack 输入字节；如果是鼠标点击，返回 0，同时通过指针参数填写坐标和修饰符 |
 | **调用时机** | 主输入循环中等待用户输入（键盘或鼠标） |
 | **JS 侧处理** | 等待用户输入。如果是键盘按键，返回 `1..255` 但排除 `0x80`。如果是鼠标点击，需要通过 `Module.setValue()` 把坐标写回 x/y/mod 指针，返回 0 |
@@ -1183,7 +1183,7 @@ WASM shim 没有实现该分支。
 | `shim_init_nhwindows` | `vpp` | VDECLCB | 初始化 |
 | `shim_player_selection_or_tty` | `b` | DECLCB | 角色选择 |
 | `shim_askname` | `v` | VDECLCB | 角色选择 |
-| `shim_get_nh_event` | `v` | VDECLCB | 生命周期 |
+| `shim_get_nh_event` | 原生 `v`；WASM Settings 特殊实现 | 特殊实现 | 生命周期 |
 | `shim_exit_nhwindows` | `vs` | VDECLCB | 生命周期 |
 | `shim_suspend_nhwindows` | `vs` | VDECLCB | 生命周期 |
 | `shim_resume_nhwindows` | `v` | VDECLCB | 生命周期 |
@@ -1206,8 +1206,8 @@ WASM shim 没有实现该分支。
 | `shim_print_glyph` | `vi11pp` | VDECLCB | 地图渲染 |
 | `shim_raw_print` | `vs` | VDECLCB | 文本输出 |
 | `shim_raw_print_bold` | `vs` | VDECLCB | 文本输出 |
-| `shim_nhgetch` | `i` | DECLCB | 输入 |
-| `shim_nh_poskey` | `ippp` | DECLCB | 输入 |
+| `shim_nhgetch` | 原生 `i`；WASM `ii` | 特殊实现 | 输入 |
+| `shim_nh_poskey` | 原生 `ippp`；WASM `ipppi` | 特殊实现 | 输入 |
 | `shim_nhbell` | `v` | VDECLCB | 输入 |
 | `shim_doprev_message` | `iv` | DECLCB | 消息 |
 | `shim_yn_function` | `css0` | DECLCB | 输入 |
@@ -1877,6 +1877,41 @@ int shim_graphics_get_save_fingerprint(uchar *outbuf, int outbufsz);
 和 version info 写入调用方缓冲区。TypeScript 用该 fingerprint 对比文件
 header，再读取固定 49-byte 角色身份块。完整存档校验仍由原版
 `restore_saved_game()` 和 `validate()` 完成。
+
+### 6.3 顶层输入状态和运行时 Settings 协议
+
+BlissHack 的 Emscripten 专用 `shim_nhgetch()` 和 `shim_nh_poskey()` 会把
+`program_state.input_state` 作为最后一个 int 参数传给 TypeScript。值为
+`commandInp` (`1`) 表示核心正在等待顶层命令；前端只允许在这个状态拦截 Esc
+并打开暂停界面。原生 `libnethack.a` 的回调 ABI 保持不变。
+
+WASM 版本的 `shim_get_nh_event()` 不再转发空心跳，而是在每次命令循环的
+安全边界执行两个私有回调：
+
+```text
+shim_settings_sync(snapshot) -> pending update or 0
+shim_settings_result(success, authoritative snapshot)
+```
+
+协议是固定的 32-bit 无符号位字段，只覆盖 `autopickup`、`pickup_types`、
+`number_pad`、`safe_pet`、`sortpack`、`showexp` 和 `time`。bit 0 表示待应用，
+bit 1 至 6 表示布尔值和 pickup all，bit 7 至 9 编码 `number_pad`，
+bit 10 至 24 编码 15 个允许的 pickup class，bit 28 至 30 是协议版本。
+其余位必须为零；当前版本为 1。
+
+C 侧先拒绝未知位、错误版本、非法 `number_pad`、冲突或空的 pickup 选择，
+再在当前 C 调用栈内通过 `parseoptions()` 应用完整更新。应用后重新调用
+`get_option_value()` 生成权威快照；若结果不一致，则回滚到更新前快照并报告
+失败。调用使用无交互消息的解析上下文，并显式补做状态栏和背包刷新，避免一组
+设置更新产生 `--More--`。完成后恢复原有解析上下文。React 不会在 Asyncify
+等待输入期间调用 `ccall()`，也不能通过该通道传入任意 `.nethackrc` 文本。
+
+真实 WASM 集成测试覆盖：
+
+- 顶层输入回调报告 `commandInp`。
+- TypeScript 返回的合法 pending payload 经 `parseoptions()` 生效。
+- result 回调返回成功和无 pending 位的权威快照。
+- 原生 `@` 命令切换 `autopickup` 后，下一命令边界快照发生对应变化。
 
 ---
 

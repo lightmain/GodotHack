@@ -46,6 +46,45 @@ const receivedEventNames = new Set();
 const receivedEvents = [];
 let eventCount = 0;
 let ynCount = 0;
+const numberPadStates = [];
+const ynPrompts = [];
+const rawMessages = [];
+const windowMessages = [];
+const inputStates = [];
+const runtimeSettingsSnapshots = [];
+const runtimeSettingsResults = [];
+let queuedRuntimeSettings = 0;
+
+const RUNTIME_SETTINGS_VERSION = 1 << 28;
+const RUNTIME_SETTINGS_PENDING = 1 << 0;
+const RUNTIME_SETTINGS_AUTOPICKUP = 1 << 1;
+const RUNTIME_SETTINGS_PICKUP_ALL = 1 << 6;
+
+/**
+ * Wait until the core reaches another keyboard-facing callback.
+ * @param {number} timeoutMs - maximum time to wait.
+ * @returns {Promise<boolean>} whether an input callback arrived.
+ */
+async function waitForPendingInput(timeoutMs) {
+  const start = Date.now();
+  while (!pendingInput && Date.now() - start < timeoutMs) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return pendingInput !== null;
+}
+
+/**
+ * Send one key to the blocked core and wait for its next input callback.
+ * @param {number} key - NetHack input byte.
+ * @returns {Promise<boolean>} whether the next input callback arrived.
+ */
+async function sendKeyAndWait(key) {
+  const resolveInput = pendingInput;
+  pendingInput = null;
+  if (!resolveInput) return false;
+  resolveInput(key);
+  return waitForPendingInput(5000);
+}
 
 globalThis.nethackGlobal = globalThis.nethackGlobal || {};
 
@@ -63,6 +102,7 @@ async function blissCallback(name, ...args) {
 
   if (name === "shim_yn_function") {
     ynCount++;
+    ynPrompts.push(String(args[0] ?? ""));
     if (ynCount > 200) {
       console.error("ABORT: shim_yn_function called 200+ times (loop?)");
       process.exit(1);
@@ -72,6 +112,19 @@ async function blissCallback(name, ...args) {
   }
 
   switch (name) {
+    case "shim_number_pad":
+      numberPadStates.push(args[0]);
+      return undefined;
+
+    case "shim_raw_print":
+    case "shim_raw_print_bold":
+      rawMessages.push(String(args[0] ?? ""));
+      return undefined;
+
+    case "shim_putstr":
+      windowMessages.push(String(args[2] ?? ""));
+      return undefined;
+
     case "shim_create_nhwindow":
       return nextWindowId++;
 
@@ -91,8 +144,28 @@ async function blissCallback(name, ...args) {
       }
       return undefined;
 
+    case "shim_settings_sync": {
+      runtimeSettingsSnapshots.push(args[0] >>> 0);
+      const update = queuedRuntimeSettings;
+      queuedRuntimeSettings = 0;
+      return update;
+    }
+
+    case "shim_settings_result":
+      runtimeSettingsResults.push({
+        success: args[0],
+        snapshot: args[1] >>> 0,
+      });
+      return undefined;
+
     case "shim_nhgetch":
+      inputStates.push(args[0]);
+      return new Promise((resolve) => {
+        pendingInput = resolve;
+      });
+
     case "shim_nh_poskey":
+      inputStates.push(args[3]);
       return new Promise((resolve) => {
         pendingInput = resolve;
       });
@@ -153,6 +226,31 @@ async function run() {
   assert(typeof module.ccall === "function", "module.ccall exists");
   assert(typeof module.FS === "object", "module.FS exists");
 
+  // --- Runtime settings file before main ---
+  console.log("\n--- Runtime settings file before main ---");
+  const runtimeRc = [
+    "OPTIONS=!autopickup",
+    "OPTIONS=pickup_types:$?!",
+    "OPTIONS=number_pad:1",
+    "OPTIONS=safe_pet",
+    "OPTIONS=sortpack",
+    "OPTIONS=showexp",
+    "OPTIONS=time",
+    "OPTIONS=!tutorial",
+    "",
+  ].join("\n");
+  module.FS.writeFile(
+    "/home/web_user/.nethackrc",
+    new TextEncoder().encode(runtimeRc),
+  );
+  assert(
+    module.FS.readFile(
+      "/home/web_user/.nethackrc",
+      { encoding: "utf8" },
+    ) === runtimeRc,
+    "runtime .nethackrc is readable before main",
+  );
+
   // --- Stage-two save helpers before main ---
   console.log("\n--- Save helpers before main ---");
   module.ccall(
@@ -192,16 +290,21 @@ async function run() {
   receivedEventNames.clear();
   receivedEvents.length = 0;
   eventCount = 0;
+  numberPadStates.length = 0;
+  ynPrompts.length = 0;
+  rawMessages.length = 0;
+  windowMessages.length = 0;
+  inputStates.length = 0;
+  runtimeSettingsSnapshots.length = 0;
+  runtimeSettingsResults.length = 0;
+  queuedRuntimeSettings = 0;
 
   const gamePromise = module.ccall("main", "number", [], [], { async: true });
   gamePromise.catch(() => {});
 
   // Wait for the game to reach the first input prompt.
   const TIMEOUT_MS = 15000;
-  const start = Date.now();
-  while (!pendingInput && Date.now() - start < TIMEOUT_MS) {
-    await new Promise((r) => setTimeout(r, 100));
-  }
+  await waitForPendingInput(TIMEOUT_MS);
 
   // --- Startup event verification ---
   console.log(
@@ -221,25 +324,110 @@ async function run() {
       < receivedEvents.indexOf("shim_player_selection_or_tty"),
     "asked for the player name before role selection"
   );
+  assert(
+    numberPadStates.includes(1),
+    "number_pad from runtime .nethackrc reached the window port",
+  );
+  assert(
+    globalThis.nethackGlobal?.globals?.flags?.showexp === true,
+    "showexp from runtime .nethackrc reached NetHack globals",
+  );
+  assert(
+    globalThis.nethackGlobal?.globals?.flags?.time === true,
+    "time from runtime .nethackrc reached NetHack globals",
+  );
 
   // --- Input handling ---
   console.log("\n--- Input handling ---");
   assert(pendingInput !== null, "game is waiting for input (shim_nh_poskey blocked)");
+  assert(
+    inputStates.includes(1),
+    "input callback identifies the top-level command state",
+  );
 
   if (pendingInput) {
     const countBefore = eventCount;
-    pendingInput(32); // space key
-    pendingInput = null;
-
-    const start2 = Date.now();
-    while (!pendingInput && Date.now() - start2 < 5000) {
-      await new Promise((r) => setTimeout(r, 50));
-    }
+    await sendKeyAndWait(32); // space key
     assert(
       eventCount > countBefore,
       `game processed input (${eventCount - countBefore} new events)`
     );
   }
+
+  // --- Runtime settings protocol ---
+  console.log("\n--- Runtime settings protocol ---");
+  const beforeInvalidUpdate = runtimeSettingsSnapshots.at(-1);
+  queuedRuntimeSettings = (
+    RUNTIME_SETTINGS_VERSION
+    | RUNTIME_SETTINGS_PENDING
+    | RUNTIME_SETTINGS_PICKUP_ALL
+    | (1 << 25)
+  ) >>> 0;
+  const resultsBeforeInvalidUpdate = runtimeSettingsResults.length;
+  await sendKeyAndWait(32);
+  assert(
+    runtimeSettingsResults.length === resultsBeforeInvalidUpdate + 1
+      && runtimeSettingsResults.at(-1)?.success === 0,
+    "C shim rejects a payload containing a reserved bit",
+  );
+  assert(
+    runtimeSettingsResults.at(-1)?.snapshot === beforeInvalidUpdate,
+    "rejected payload leaves the authoritative settings unchanged",
+  );
+
+  const dynamicSettings = (
+    RUNTIME_SETTINGS_VERSION
+    | RUNTIME_SETTINGS_PENDING
+    | RUNTIME_SETTINGS_AUTOPICKUP
+    | RUNTIME_SETTINGS_PICKUP_ALL
+  ) >>> 0;
+  const appliedSettings = (
+    dynamicSettings & ~RUNTIME_SETTINGS_PENDING
+  ) >>> 0;
+  queuedRuntimeSettings = dynamicSettings;
+  const resultsBeforeUpdate = runtimeSettingsResults.length;
+  await sendKeyAndWait(32);
+  assert(
+    runtimeSettingsResults.length === resultsBeforeUpdate + 1,
+    "C shim reported one dynamic settings application result",
+  );
+  assert(
+    runtimeSettingsResults.at(-1)?.success === 1,
+    "C shim accepted the validated dynamic settings update",
+  );
+  assert(
+    runtimeSettingsResults.at(-1)?.snapshot === appliedSettings,
+    "C shim returned the authoritative post-application snapshot",
+  );
+  assert(
+    globalThis.nethackGlobal?.globals?.flags?.showexp === false
+      && globalThis.nethackGlobal?.globals?.flags?.time === false,
+    "dynamic settings reached NetHack globals through parseoptions",
+  );
+  assert(
+    !windowMessages.some((message) => /option toggled/i.test(message)),
+    "dynamic settings application emits no interactive option messages",
+  );
+
+  await sendKeyAndWait(64); // @ toggles autopickup
+  assert(
+    runtimeSettingsSnapshots.at(-1)
+      === (appliedSettings & ~RUNTIME_SETTINGS_AUTOPICKUP) >>> 0,
+    "native @ command is reflected by the next settings snapshot",
+  );
+  assert(
+    !ynPrompts.some((query) => /tutorial/i.test(query)),
+    "!tutorial skipped the tutorial query",
+  );
+  assert(
+    !rawMessages.some(
+      (message) =>
+        /config|syntax|unknown option|bad option|unrecognized option/i.test(
+          message,
+        ),
+    ),
+    "generated runtime options produced no configuration error",
+  );
 
   // --- Summary ---
   console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);

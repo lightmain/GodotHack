@@ -21,6 +21,7 @@ interface HomeScreenProps {
     request: RawSaveImportRequest,
   ) => Promise<HomeSaveImportResult>;
   onNewGame: () => void;
+  onSettings?: () => void;
   savePickerOpen?: boolean;
   saves?: SaveListEntry[];
   storageAvailable?: boolean;
@@ -43,6 +44,7 @@ export function HomeScreen({
     throw new Error("Raw save import is unavailable");
   },
   onNewGame,
+  onSettings = () => undefined,
   savePickerOpen = false,
   saves = [],
   storageAvailable = true,
@@ -106,7 +108,7 @@ export function HomeScreen({
               />
             )}
           </div>
-          <button disabled type="button">Settings</button>
+          <button onClick={onSettings} type="button">Settings</button>
         </nav>
 
         <div className="home-identity">

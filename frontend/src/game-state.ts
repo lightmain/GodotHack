@@ -1,3 +1,5 @@
+import type { RuntimeNetHackSettings } from "./settings/runtime-settings-protocol";
+
 /** NetHack map width, including the unused column zero. */
 export const COLNO = 80;
 /** NetHack map height. */
@@ -130,6 +132,9 @@ export interface GameSnapshot {
   status: Record<number, StatusValue>;
   modal: GameModal | null;
   inputRequest: InputRequest | null;
+  commandInput: boolean;
+  runtimeSettings: RuntimeNetHackSettings | null;
+  runtimeSettingsStatus: "idle" | "pending" | "applied";
   numberPad: boolean;
   inventoryWindowId: number | null;
   bellCount: number;
@@ -178,6 +183,9 @@ function createInitialSnapshot(): GameSnapshot {
     status: {},
     modal: null,
     inputRequest: null,
+    commandInput: false,
+    runtimeSettings: null,
+    runtimeSettingsStatus: "idle",
     numberPad: false,
     inventoryWindowId: null,
     bellCount: 0,
@@ -548,6 +556,29 @@ export function clearModal(): void {
  */
 export function setInputRequest(request: InputRequest | null): void {
   publish({ inputRequest: request });
+}
+
+/** Record whether the core is waiting for a top-level command key. */
+export function setCommandInput(commandInput: boolean): void {
+  if (snapshot.commandInput !== commandInput) publish({ commandInput });
+}
+
+/** Replace the active dynamic settings snapshot reported by the core. */
+export function setRuntimeSettingsSnapshot(
+  runtimeSettings: RuntimeNetHackSettings,
+  runtimeSettingsStatus: GameSnapshot["runtimeSettingsStatus"] =
+    snapshot.runtimeSettingsStatus,
+): void {
+  publish({ runtimeSettings, runtimeSettingsStatus });
+}
+
+/** Record the lifecycle of one queued dynamic settings update. */
+export function setRuntimeSettingsStatus(
+  runtimeSettingsStatus: GameSnapshot["runtimeSettingsStatus"],
+): void {
+  if (snapshot.runtimeSettingsStatus !== runtimeSettingsStatus) {
+    publish({ runtimeSettingsStatus });
+  }
 }
 
 /**

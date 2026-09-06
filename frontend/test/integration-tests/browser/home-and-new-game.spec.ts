@@ -20,7 +20,7 @@ test("starts no NetHack session before the player begins a game", async ({
     "BlissHack prealpha-3",
   );
   await expect(page.locator(".nh-shell")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Settings" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Settings" })).toBeEnabled();
 
   const picker = await openSavePicker(page);
   await expect(picker.getByText("No saved games")).toBeVisible();

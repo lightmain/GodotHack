@@ -32,6 +32,8 @@ import {
   type StorageModule,
   type StorageService,
 } from "../storage/storage-service";
+import type { NetHackSettingsV1 } from "../settings/profile";
+import { installRuntimeNetHackRc } from "../settings/runtime-nethackrc";
 
 /** A started session and the callback registered for its WASM module. */
 export interface SessionHandle {
@@ -50,8 +52,12 @@ export interface HomePreparation {
 
 /** Request which claims the prepared home module for one game. */
 export type SessionStartRequest =
-  | { kind: "new" }
-  | { kind: "continue"; save: SaveListEntry };
+  | { kind: "new"; settings?: NetHackSettingsV1 }
+  | {
+    kind: "continue";
+    save: SaveListEntry;
+    settings?: NetHackSettingsV1;
+  };
 
 /** Successful import includes the refreshed Home preparation. */
 export type HomeSaveImportResult =
@@ -111,6 +117,10 @@ export interface SessionManagerOptions {
   diagnostics?: DiagnosticLog;
   dispatch: (action: AppAction) => void;
   moduleFactory?: () => Promise<EmscriptenModule>;
+  installRuntimeConfig?: (
+    module: EmscriptenModule,
+    settings: NetHackSettingsV1,
+  ) => void;
   setRestoreRequired?: (
     module: EmscriptenModule,
     required: boolean,
@@ -345,6 +355,27 @@ export function createSessionManager(
       || owner.session
     ) {
       throw new Error("No ready game module is available");
+    }
+
+    if (request.settings) {
+      try {
+        const installRuntimeConfig = options.installRuntimeConfig
+          ?? installRuntimeNetHackRc;
+        installRuntimeConfig(owner.module, request.settings);
+        recordDiagnostic({
+          level: "info",
+          area: "wasm",
+          event: "settings.runtime_config_installed",
+          moduleId: owner.moduleId,
+        });
+      } catch (error) {
+        await reportFatal(
+          "wasm",
+          "settings.runtime_config_install_failed",
+          error,
+        );
+        throw error;
+      }
     }
 
     const sessionId = createSessionId();

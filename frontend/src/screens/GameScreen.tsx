@@ -2,12 +2,18 @@ import {
   memo,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type SyntheticEvent,
 } from "react";
+import {
+  Play,
+  Save,
+  Settings,
+} from "lucide-react";
 import "../App.css";
 import {
   ATR_BOLD,
@@ -31,17 +37,30 @@ import {
   type WindowState,
 } from "../game-state";
 import { keyboardEventToNetHackKey } from "../keyboard";
-import { buildMapRuns, mapPositionFromPoint } from "../map-rendering";
+import {
+  buildMapRuns,
+  mapFollowOffset,
+  mapPositionFromPoint,
+} from "../map-rendering";
 import { buildHitPointBar } from "../status-rendering";
+import {
+  validateProfile,
+  type BlissHackProfileV1,
+  type InterfaceSettingsV1,
+} from "../settings/profile";
+import type { ProfileLoadStatus } from "../settings/profile-store";
 import {
   dismissDisplay,
   normalizePlayerNameInput,
+  queueRuntimeSettings,
+  requestSaveAndExit,
   sendKey,
   sendPosition,
   submitExtendedCommand,
   submitLine,
   submitMenuSelection,
 } from "../nethack-bridge";
+import { SettingsScreen } from "./SettingsScreen";
 
 const COLOR_NAMES = [
   "black",
@@ -102,12 +121,57 @@ const STATUS_LINE_THREE = [23, 24, 25, 26] as const;
 const AUTO_ACCELERATORS =
   "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
+interface GameScreenProps {
+  loadStatus: ProfileLoadStatus;
+  moduleId: string;
+  onApplyProfile(profile: BlissHackProfileV1): BlissHackProfileV1;
+  profile: BlissHackProfileV1;
+}
+
 /**
  * Render and operate the active character-mode NetHack session.
+ * @param props - active profile and persistence boundary.
  * @returns the complete game terminal.
  */
-export function GameScreen() {
+export function GameScreen({
+  loadStatus,
+  moduleId,
+  onApplyProfile,
+  profile,
+}: GameScreenProps) {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const [pauseView, setPauseView] = useState<"pause" | "settings" | null>(null);
+  const previousRuntimeSettings = useRef<string | null>(null);
+  const settings = profile.interface;
+  const gameProfile = useMemo(
+    () => profileWithRuntimeSettings(profile, snapshot.runtimeSettings),
+    [profile, snapshot.runtimeSettings],
+  );
+
+  useEffect(() => {
+    const current = snapshot.runtimeSettings;
+    if (!current) return;
+    const serialized = JSON.stringify(current);
+    const previous = previousRuntimeSettings.current;
+    previousRuntimeSettings.current = serialized;
+    if (
+      previous === null
+      || previous === serialized
+      || snapshot.runtimeSettingsStatus !== "idle"
+    ) {
+      return;
+    }
+    try {
+      onApplyProfile(profileWithRuntimeSettings(profile, current));
+    } catch {
+      // The current core value remains authoritative for this session.
+    }
+  }, [
+    onApplyProfile,
+    profile,
+    snapshot.runtimeSettings,
+    snapshot.runtimeSettingsStatus,
+  ]);
 
   useEffect(() => {
     /**
@@ -115,6 +179,7 @@ export function GameScreen() {
      * @param event - browser keyboard event.
      */
     function handleKeyDown(event: KeyboardEvent): void {
+      if (pauseView !== null) return;
       if (snapshot.inputRequest?.kind === "line") return;
       if (snapshot.modal?.kind === "menu" || snapshot.modal?.kind === "extcmd") {
         return;
@@ -124,6 +189,15 @@ export function GameScreen() {
       });
       if (value === null) return;
       event.preventDefault();
+      if (
+        value === 27
+        && !event.repeat
+        && snapshot.commandInput
+        && snapshot.modal === null
+      ) {
+        setPauseView("pause");
+        return;
+      }
       if (snapshot.modal?.kind === "text" || snapshot.modal?.kind === "history") {
         dismissDisplay();
         return;
@@ -133,10 +207,30 @@ export function GameScreen() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [snapshot.inputRequest, snapshot.modal, snapshot.numberPad]);
+  }, [
+    pauseView,
+    snapshot.commandInput,
+    snapshot.inputRequest,
+    snapshot.modal,
+    snapshot.numberPad,
+  ]);
+
+  /** Persist game settings, queue the dynamic subset, and advance one safe boundary. */
+  function applyGameProfile(candidate: BlissHackProfileV1): BlissHackProfileV1 {
+    const saved = onApplyProfile(candidate);
+    queueRuntimeSettings(saved.nethack);
+    sendKey(27);
+    return saved;
+  }
 
   return (
-    <main className="nh-shell" aria-label="BlissHack">
+    <main
+      className={`nh-shell nh-font-${settings.terminalFontSize}`}
+      data-command-input={snapshot.commandInput ? "ready" : "busy"}
+      data-number-pad={snapshot.numberPad ? "on" : "off"}
+      data-settings-status={snapshot.runtimeSettingsStatus}
+      aria-label="BlissHack"
+    >
       <header className="nh-header">
         <strong>BlissHack</strong>
         <span className={`nh-runtime nh-runtime-${snapshot.phase}`}>
@@ -150,15 +244,133 @@ export function GameScreen() {
         </section>
       ) : (
         <section className="nh-terminal" aria-label="NetHack terminal">
-          <MessageArea messages={snapshot.messages} />
-          <MapGrid cursor={snapshot.cursor} map={snapshot.map} />
+          <MessageArea
+            historyLines={settings.messageHistoryLines}
+            messages={snapshot.messages}
+          />
+          <MapGrid
+            clipCenter={snapshot.clipCenter}
+            cursor={snapshot.cursor}
+            followPlayer={settings.followPlayer}
+            layoutKey={`${settings.terminalFontSize}:${settings.messageHistoryLines}`}
+            map={snapshot.map}
+          />
           <StatusArea status={snapshot.status} />
           <InputArea request={snapshot.inputRequest} />
         </section>
       )}
 
       {snapshot.modal && <ModalRenderer modal={snapshot.modal} />}
+      {pauseView === "pause" && (
+        <PauseOverlay
+          ready={
+            snapshot.commandInput
+            && snapshot.runtimeSettingsStatus !== "pending"
+          }
+          onResume={() => setPauseView(null)}
+          onSaveAndExit={() => {
+            setPauseView(null);
+            requestSaveAndExit();
+          }}
+          onSettings={() => setPauseView("settings")}
+        />
+      )}
+      {pauseView === "settings" && (
+        <SettingsScreen
+          context="game"
+          loadStatus={loadStatus}
+          moduleId={moduleId}
+          onApply={applyGameProfile}
+          onBack={() => setPauseView("pause")}
+          profile={gameProfile}
+        />
+      )}
     </main>
+  );
+}
+
+/**
+ * Replace dynamic NetHack fields with the core's authoritative current values.
+ * @param profile - persisted personal defaults.
+ * @param runtimeSettings - current core snapshot, or null before startup.
+ * @returns a complete profile suitable for the shared Settings form.
+ */
+function profileWithRuntimeSettings(
+  profile: BlissHackProfileV1,
+  runtimeSettings: GameSnapshot["runtimeSettings"],
+): BlissHackProfileV1 {
+  if (!runtimeSettings) return validateProfile(profile);
+  return validateProfile({
+    ...profile,
+    nethack: {
+      tutorial: profile.nethack.tutorial,
+      ...runtimeSettings,
+    },
+  });
+}
+
+/**
+ * Render commands which leave the core blocked on its current input promise.
+ * @param props - resume, settings, and native save command callbacks.
+ * @returns the pause dialog.
+ */
+function PauseOverlay({
+  onResume,
+  onSaveAndExit,
+  onSettings,
+  ready,
+}: {
+  onResume(): void;
+  onSaveAndExit(): void;
+  onSettings(): void;
+  ready: boolean;
+}) {
+  useEffect(() => {
+    /** Resume the game from the pause layer without sending Esc to NetHack. */
+    function handleEscape(event: KeyboardEvent): void {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      onResume();
+    }
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [onResume]);
+
+  return (
+    <div className="nh-pause-backdrop">
+      <section
+        aria-label="Game paused"
+        aria-modal="true"
+        className="nh-pause"
+        role="dialog"
+      >
+        <header>
+          <span>BlissHack</span>
+          <h1>Paused</h1>
+        </header>
+        <div className="nh-pause-actions">
+          <button autoFocus disabled={!ready} onClick={onResume} type="button">
+            <Play aria-hidden="true" size={18} />
+            Resume
+          </button>
+          <button disabled={!ready} onClick={onSettings} type="button">
+            <Settings aria-hidden="true" size={18} />
+            Settings
+          </button>
+          <button
+            className="nh-pause-save"
+            disabled={!ready}
+            onClick={onSaveAndExit}
+            type="button"
+          >
+            <Save aria-hidden="true" size={18} />
+            Save and Exit
+          </button>
+          {!ready && <span role="status">Applying settings</span>}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -181,13 +393,19 @@ function runtimeLabel(snapshot: GameSnapshot): string {
  * @returns message region.
  */
 const MessageArea = memo(function MessageArea({
+  historyLines,
   messages: allMessages,
 }: {
+  historyLines: InterfaceSettingsV1["messageHistoryLines"];
   messages: TextLine[];
 }) {
-  const messages = allMessages.slice(-3);
+  const messages = allMessages.slice(-historyLines);
   return (
-    <section className="nh-messages" aria-live="polite" aria-label="Messages">
+    <section
+      className={`nh-messages nh-messages-${historyLines}`}
+      aria-live="polite"
+      aria-label="Messages"
+    >
       {messages.length === 0
         ? <div className="nh-message">&nbsp;</div>
         : messages.map((line, index) => (
@@ -208,12 +426,38 @@ const MessageArea = memo(function MessageArea({
  * @returns the 80 by 21 map grid.
  */
 const MapGrid = memo(function MapGrid({
+  clipCenter,
   cursor,
+  followPlayer,
+  layoutKey,
   map,
 }: {
+  clipCenter: GameSnapshot["clipCenter"];
   cursor: GameSnapshot["cursor"];
+  followPlayer: boolean;
+  layoutKey: string;
   map: MapCell[][];
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const viewport = scrollRef.current;
+    if (!viewport || !followPlayer || !clipCenter) return;
+
+    function centerPlayer(): void {
+      if (!viewport || !clipCenter) return;
+      const offset = mapFollowOffset(clipCenter.x, clipCenter.y, viewport);
+      viewport.scrollLeft = offset.left;
+      viewport.scrollTop = offset.top;
+    }
+
+    centerPlayer();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(centerPlayer);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [clipCenter, followPlayer, layoutKey]);
+
   /**
    * Submit a primary or secondary map click while nh_poskey is pending.
    * @param event - delegated mouse event from a map cell.
@@ -239,7 +483,7 @@ const MapGrid = memo(function MapGrid({
   }
 
   return (
-    <div className="nh-map-scroll">
+    <div className="nh-map-scroll" ref={scrollRef}>
       <div
         className="nh-map"
         aria-label="Dungeon map"

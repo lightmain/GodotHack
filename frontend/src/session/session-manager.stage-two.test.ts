@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppAction } from "../app/app-state";
 import { resetGameState } from "../game-state";
 import type { EmscriptenModule } from "../nethack-bridge";
+import { createDefaultProfile } from "../settings/profile";
 import {
   createSessionManager,
   type SessionHandle,
@@ -30,6 +31,7 @@ interface HomePreparation {
 interface SessionStartRequest {
   kind: "new" | "continue";
   save?: ValidatedSave;
+  settings?: ReturnType<typeof createDefaultProfile>["nethack"];
 }
 
 interface StageTwoSessionManager {
@@ -164,9 +166,13 @@ beforeEach(() => {
 
 describe("home module ownership", () => {
   it.each([
-    { kind: "new" as const },
+    {
+      kind: "new" as const,
+      settings: createDefaultProfile().nethack,
+    },
     {
       kind: "continue" as const,
+      settings: createDefaultProfile().nethack,
       save: {
         path: "/save/0Ada",
         modifiedAt: 1_700_000_000_000,
@@ -200,6 +206,9 @@ describe("home module ownership", () => {
     });
     const setStartupIdentity = vi.fn();
     const setRestoreRequired = vi.fn();
+    const installRuntimeConfig = vi.fn(() => {
+      order.push("install-rc");
+    });
     const manager = createStageTwoManager({
       createModuleId: () => "module-1",
       createSessionId: () => "session-1",
@@ -208,6 +217,7 @@ describe("home module ownership", () => {
         order.push(action.type);
       }),
       moduleFactory: factory,
+      installRuntimeConfig,
       setRestoreRequired,
       setStartupIdentity,
     });
@@ -243,6 +253,11 @@ describe("home module ownership", () => {
 
     expect(handle.module).toBe(module.module);
     expect(factory).toHaveBeenCalledTimes(1);
+    expect(installRuntimeConfig).toHaveBeenCalledOnce();
+    expect(installRuntimeConfig).toHaveBeenCalledWith(
+      module.module,
+      createDefaultProfile().nethack,
+    );
     expect(module.module.ccall).toHaveBeenCalledWith(
       "main",
       "number",
@@ -252,6 +267,9 @@ describe("home module ownership", () => {
     );
     expect(module.module.ccall).toHaveBeenCalledTimes(2);
     if (request.kind === "continue") {
+      expect(installRuntimeConfig.mock.invocationCallOrder[0]).toBeLessThan(
+        storage.readSave.mock.invocationCallOrder[0],
+      );
       expect(setStartupIdentity).toHaveBeenCalledWith(
         module.module,
         request.save.identity,

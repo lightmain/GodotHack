@@ -15,7 +15,7 @@ export async function openHome(page: Page, marker: string): Promise<void> {
   await page.goto(`?integration=${encodeURIComponent(marker)}`);
   await expect(page.getByRole("heading", { name: "BlissHack" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
-  await expect(page.getByRole("button", { name: "Settings" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Settings" })).toBeEnabled();
   await expect(page.getByRole("textbox", { name: "Who are you?" })).toHaveCount(0);
 }
 

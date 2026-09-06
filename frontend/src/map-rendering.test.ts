@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { GlyphInfo, MapCell } from "./game-state";
-import { buildMapRuns, mapPositionFromPoint } from "./map-rendering";
+import {
+  buildMapRuns,
+  mapFollowOffset,
+  mapPositionFromPoint,
+} from "./map-rendering";
 
 /**
  * Create a map cell with the display fields needed by the row renderer.
@@ -74,5 +78,33 @@ describe("map row rendering", () => {
       width: 480,
       height: 210,
     })).toBeNull();
+  });
+
+  it("centers the followed map position and clamps at map edges", () => {
+    const dimensions = {
+      scrollWidth: 800,
+      scrollHeight: 420,
+      clientWidth: 400,
+      clientHeight: 210,
+    };
+
+    expect(mapFollowOffset(40, 10, dimensions)).toEqual({
+      left: 205,
+      top: 105,
+    });
+    expect(mapFollowOffset(1, 0, dimensions)).toEqual({ left: 0, top: 0 });
+    expect(mapFollowOffset(79, 20, dimensions)).toEqual({
+      left: 400,
+      top: 210,
+    });
+  });
+
+  it("does not produce negative offsets when the full map fits", () => {
+    expect(mapFollowOffset(40, 10, {
+      scrollWidth: 800,
+      scrollHeight: 420,
+      clientWidth: 900,
+      clientHeight: 500,
+    })).toEqual({ left: 0, top: 0 });
   });
 });

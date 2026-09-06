@@ -30,6 +30,7 @@ import {
   putMessageHistory,
   ringBell,
   setClipCenter,
+  setCommandInput,
   setCursor,
   setExitReason,
   setInputRequest,
@@ -39,6 +40,8 @@ import {
   setNumberPad,
   setRuntimeError,
   setRuntimePhase,
+  setRuntimeSettingsSnapshot,
+  setRuntimeSettingsStatus,
   setStatusValue,
   showExtendedCommands,
   showHistory,
@@ -55,6 +58,13 @@ import type {
   SaveValidation,
   StorageModule,
 } from "./storage/storage-service";
+import type { NetHackSettingsV1 } from "./settings/profile";
+import {
+  decodeRuntimeSettings,
+  encodeRuntimeSettings,
+  runtimeSettingsFromProfile,
+  type RuntimeNetHackSettings,
+} from "./settings/runtime-settings-protocol";
 
 /** Emscripten filesystem surface used by DLB access and save persistence. */
 export interface EmscriptenFileSystem {
@@ -125,6 +135,7 @@ type PendingAction =
     resolve: (value: number) => void;
     positionPointers: { x: number; y: number; modifier: number } | null;
     module: EmscriptenModule;
+    commandInput: boolean;
   }
   | {
     kind: "yn";
@@ -173,6 +184,9 @@ const MENU_ITEM_FLAGS_OFFSET = 12;
 const GETLIN_BUFFER_SIZE = 256;
 const PLAYER_NAME_BUFFER_SIZE = 32;
 const KEY_QUEUE_LIMIT = 2;
+const SAVE_COMMAND = "S".charCodeAt(0);
+const SAVE_CONFIRM_QUERY = "Really save?";
+const YES_RESPONSE = "y".charCodeAt(0);
 const BL_ATTCLR_MAX = 24;
 const EXTCMD_ENTRY_SIZE = 24;
 const EXTCMD_TEXT_OFFSET = 4;
@@ -185,7 +199,9 @@ const INTERNALCMD = 0x0040;
 let pendingAction: PendingAction | null = null;
 const queuedKeys: number[] = [];
 let typeaheadEnabled = false;
+let saveExitAutomation: "confirm" | "display" | null = null;
 let knownSaveNames: string[] = [];
+let pendingRuntimeSettings: RuntimeNetHackSettings | null = null;
 
 /**
  * Remove Emscripten's synthetic login name before NetHack calls whoami().
@@ -204,6 +220,15 @@ export function preparePlayerNamePrompt(module: EmscriptenModule): void {
  */
 export function setKnownSaveNames(names: string[]): void {
   knownSaveNames = [...new Set(names)];
+}
+
+/**
+ * Queue one complete dynamic settings update for the next safe command boundary.
+ * @param settings - validated profile settings; tutorial is startup-only.
+ */
+export function queueRuntimeSettings(settings: NetHackSettingsV1): void {
+  pendingRuntimeSettings = runtimeSettingsFromProfile(settings);
+  setRuntimeSettingsStatus("pending");
 }
 
 /**
@@ -419,6 +444,7 @@ export function sendKey(value: number): void {
   if (pending.kind === "key") {
     pendingAction = null;
     typeaheadEnabled = true;
+    setCommandInput(false);
     setInputRequest(null);
     pending.resolve(value);
     return;
@@ -455,6 +481,17 @@ export function sendKey(value: number): void {
 }
 
 /**
+ * Send the native save command and skip its immediate confirmation and display.
+ * The intent is armed only while the core is waiting for a top-level command.
+ * @returns nothing; unsupported input states leave the bridge unchanged.
+ */
+export function requestSaveAndExit(): void {
+  if (pendingAction?.kind !== "key" || !pendingAction.commandInput) return;
+  saveExitAutomation = "confirm";
+  sendKey(SAVE_COMMAND);
+}
+
+/**
  * Resolve nh_poskey with a map position and mouse button modifier.
  * @param x - NetHack map column.
  * @param y - NetHack map row.
@@ -468,6 +505,7 @@ export function sendPosition(x: number, y: number, modifier: 1 | 2): void {
   pending.module.setValue(pending.positionPointers.modifier, modifier, "i32");
   pendingAction = null;
   typeaheadEnabled = true;
+  setCommandInput(false);
   setInputRequest(null);
   pending.resolve(0);
 }
@@ -590,8 +628,10 @@ export function isWaitingForInput(): boolean {
  */
 export function resetBridgeState(): void {
   pendingAction = null;
+  pendingRuntimeSettings = null;
   queuedKeys.length = 0;
   typeaheadEnabled = false;
+  saveExitAutomation = null;
   knownSaveNames = [];
   resetGameState();
 }
@@ -645,6 +685,14 @@ async function dispatchShimCallback(
     case "shim_get_nh_event":
     case "shim_suspend_nhwindows":
     case "shim_resume_nhwindows":
+      return undefined;
+    case "shim_settings_sync":
+      return synchronizeRuntimeSettings(asNumber(args[0]));
+    case "shim_settings_result":
+      acceptRuntimeSettingsResult(
+        asNumber(args[0]),
+        asNumber(args[1]),
+      );
       return undefined;
     case "shim_exit_nhwindows":
       setExitReason(asString(args[0]));
@@ -712,13 +760,13 @@ async function dispatchShimCallback(
       appendWindowText(-1, ATR_BOLD, asString(args[0]));
       return undefined;
     case "shim_nhgetch":
-      return waitForKey(module, null);
+      return waitForKey(module, null, asNumber(args[0]) === 1);
     case "shim_nh_poskey":
       return waitForKey(module, {
         x: asNumber(args[0]),
         y: asNumber(args[1]),
         modifier: asNumber(args[2]),
-      });
+      }, asNumber(args[3]) === 1);
     case "shim_nhbell":
       ringBell();
       return undefined;
@@ -804,6 +852,7 @@ function asString(value: unknown): string {
  */
 function safeCallbackResult(name: string): unknown {
   if (name === "shim_player_selection_or_tty") return true;
+  if (name === "shim_settings_sync") return 0;
   if (
     name === "shim_create_nhwindow"
     || name === "shim_select_menu"
@@ -816,6 +865,40 @@ function safeCallbackResult(name: string): unknown {
   if (name === "shim_doprev_message" || name === "set_shim_font_name") return 0;
   if (name === "shim_getmsghistory" || name === "shim_get_color_string") return "";
   return undefined;
+}
+
+/** Publish the core snapshot and return one queued, versioned update. */
+function synchronizeRuntimeSettings(snapshotPayload: number): number {
+  const current = decodeRuntimeSettings(snapshotPayload);
+  if (current.pending) {
+    throw new Error("Core runtime settings snapshot is marked pending");
+  }
+  const pending = pendingRuntimeSettings;
+  setRuntimeSettingsSnapshot(
+    current.settings,
+    pending ? "pending" : "idle",
+  );
+  if (!pending) return 0;
+  pendingRuntimeSettings = null;
+  return encodeRuntimeSettings(pending, true);
+}
+
+/** Process the core's post-application status and authoritative snapshot. */
+function acceptRuntimeSettingsResult(
+  success: number,
+  snapshotPayload: number,
+): void {
+  const current = decodeRuntimeSettings(snapshotPayload);
+  if (current.pending) {
+    throw new Error("Core runtime settings result is marked pending");
+  }
+  setRuntimeSettingsSnapshot(
+    current.settings,
+    pendingRuntimeSettings ? "pending" : success === 1 ? "applied" : "idle",
+  );
+  if (success !== 1) {
+    throw new Error("Core rejected a validated runtime settings update");
+  }
 }
 
 /**
@@ -895,6 +978,14 @@ function displayWindow(
 ): Promise<void> | undefined {
   flushDisplay();
   const window = getWindow(winid);
+  if (
+    saveExitAutomation === "display"
+    && blocking
+    && window?.type === NHW_MESSAGE
+  ) {
+    saveExitAutomation = null;
+    return undefined;
+  }
   const needsAcknowledgement = blocking
     || (window?.type !== NHW_MAP && window?.type !== NHW_MESSAGE);
   if (!needsAcknowledgement) return undefined;
@@ -1002,17 +1093,32 @@ function messageMenu(
 /**
  * Wait for keyboard or mouse input requested by the core.
  * @param positionPointers - nh_poskey output pointers, or null for nhgetch.
+ * @param commandInput - whether this is the top-level command prompt.
  * @returns the input code after user interaction.
  */
 function waitForKey(
   module: EmscriptenModule,
   positionPointers: { x: number; y: number; modifier: number } | null,
+  commandInput: boolean,
 ): Promise<number> {
+  if (commandInput && saveExitAutomation !== null) {
+    saveExitAutomation = null;
+  }
+  setCommandInput(commandInput);
   const queued = queuedKeys.shift();
-  if (queued !== undefined) return Promise.resolve(queued);
+  if (queued !== undefined) {
+    setCommandInput(false);
+    return Promise.resolve(queued);
+  }
   setInputRequest({ kind: positionPointers ? "position" : "key" });
   return new Promise<number>((resolve) => {
-    setPending({ kind: "key", resolve, positionPointers, module });
+    setPending({
+      kind: "key",
+      resolve,
+      positionPointers,
+      module,
+      commandInput,
+    });
   });
 }
 
@@ -1027,9 +1133,19 @@ function waitForYn(
   choices: string | null,
   defaultCode: number,
 ): Promise<number> {
+  const normalizedQuery = query ?? "";
+  if (saveExitAutomation === "confirm") {
+    if (normalizedQuery === SAVE_CONFIRM_QUERY && choices === "yn") {
+      saveExitAutomation = "display";
+      return Promise.resolve(YES_RESPONSE);
+    }
+    saveExitAutomation = null;
+  } else if (saveExitAutomation === "display") {
+    saveExitAutomation = null;
+  }
   setInputRequest({
     kind: "yn",
-    query: query ?? "",
+    query: normalizedQuery,
     choices,
     defaultCode,
   });
