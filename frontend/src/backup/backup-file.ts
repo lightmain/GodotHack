@@ -332,11 +332,21 @@ function decodeCanonicalBase64(value: string): Uint8Array {
 
 /** Compare backup saves by exact basename for deterministic output. */
 function compareSaveNames(left: BackupSaveBytes, right: BackupSaveBytes): number {
-  return left.fileName < right.fileName
-    ? -1
-    : left.fileName > right.fileName
-    ? 1
-    : 0;
+  const leftPoints = Array.from(
+    left.fileName,
+    (value) => value.codePointAt(0) as number,
+  );
+  const rightPoints = Array.from(
+    right.fileName,
+    (value) => value.codePointAt(0) as number,
+  );
+  const count = Math.min(leftPoints.length, rightPoints.length);
+  for (let index = 0; index < count; index += 1) {
+    if (leftPoints[index] !== rightPoints[index]) {
+      return leftPoints[index] - rightPoints[index];
+    }
+  }
+  return leftPoints.length - rightPoints.length;
 }
 
 /** Reject a decoded save length outside the schema limit. */

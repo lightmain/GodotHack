@@ -58,6 +58,29 @@ describe("diagnostic log retention", () => {
     }).sequence).toBe(1);
   });
 
+  it("keeps in-memory events when persisted clearing fails", () => {
+    const storage = memoryStorage();
+    storage.removeItem = vi.fn(() => {
+      throw new Error("blocked");
+    });
+    const log = deterministicLog(storage);
+    log.record({ level: "info", area: "app", event: "before.clear" });
+
+    expect(() => log.clear()).toThrow("blocked");
+    expect(log.events()).toHaveLength(1);
+  });
+
+  it("can reset only the in-memory generation after external key removal", () => {
+    const storage = memoryStorage();
+    const log = deterministicLog(storage);
+    log.record({ level: "info", area: "app", event: "before.reset" });
+
+    log.reset();
+
+    expect(log.events()).toEqual([]);
+    expect(storage.values.has(DIAGNOSTIC_STORAGE_KEY)).toBe(true);
+  });
+
   it("retains the newest 500 events with stable sequence numbers", () => {
     const log = deterministicLog(memoryStorage());
 

@@ -4,7 +4,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { BlissHackProfileV1 } from "./profile";
+import {
+  createDefaultProfile,
+  type BlissHackProfileV1,
+} from "./profile";
 import {
   browserProfileStorage,
   createProfileStore,
@@ -44,12 +47,19 @@ export function ProfileProvider({
     return cleared;
   }, [store]);
 
+  const resetProfile = useCallback(() => {
+    const profile = createDefaultProfile();
+    setState({ profile, status: "missing" });
+    return profile;
+  }, []);
+
   const value = useMemo<ProfileContextValue>(() => ({
     profile: state.profile,
     loadStatus: state.status,
     clearProfile,
+    resetProfile,
     replaceProfile,
-  }), [clearProfile, replaceProfile, state]);
+  }), [clearProfile, replaceProfile, resetProfile, state]);
 
   return (
     <ProfileContext value={value}>

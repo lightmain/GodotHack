@@ -1078,6 +1078,15 @@ describe("files, history, extended commands, and lifecycle", () => {
     });
   });
 
+  it("rejects when the current build fingerprint API is unavailable", async () => {
+    vi.mocked(harness.module.ccall).mockReturnValue(0);
+
+    await expect(validateSaveBytes(
+      harness.module as never,
+      new Uint8Array(64),
+    )).rejects.toThrow("fingerprint is unavailable");
+  });
+
   it("parses the WASM extcmdlist and returns the selected source index", async () => {
     const listPtr = 0x1000;
     harness.writeString(0x1800, "adjust");

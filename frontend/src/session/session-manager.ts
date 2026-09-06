@@ -95,6 +95,7 @@ export interface FullBackupExport {
 /** Completed backup save import and refreshed Home data. */
 export interface FullBackupImportResult extends BackupImportSummary {
   preparation: HomePreparation;
+  refreshFailed: boolean;
 }
 
 /** Public controls for the single-module and single-session lifecycle. */
@@ -846,17 +847,33 @@ export function createSessionManager(
         throw error;
       }
       assertCurrentHomeModule(owner);
-      const saves = await owner.storage.listSaves();
-      assertCurrentHomeModule(owner);
-      const preparation = { ...owner.preparation, saves };
-      owner.preparation = preparation;
-      options.dispatch({
-        type: "HOME_SAVES_UPDATED",
-        moduleId,
-        saves,
-      });
+      let preparation = owner.preparation;
+      let refreshFailed = false;
+      let refreshedSaves: SaveListEntry[] | null = null;
+      try {
+        refreshedSaves = await owner.storage.listSaves();
+      } catch (error) {
+        refreshFailed = true;
+        recordDiagnostic({
+          level: "warning",
+          area: "storage",
+          event: "backup.import_refresh_failed",
+          moduleId,
+          detail: { errorName: diagnosticErrorName(error) },
+        });
+      }
+      if (refreshedSaves) {
+        assertCurrentHomeModule(owner);
+        preparation = { ...owner.preparation, saves: refreshedSaves };
+        owner.preparation = preparation;
+        options.dispatch({
+          type: "HOME_SAVES_UPDATED",
+          moduleId,
+          saves: refreshedSaves,
+        });
+      }
       recordDiagnostic({
-        level: summary.failed > 0 ? "warning" : "info",
+        level: summary.failed > 0 || refreshFailed ? "warning" : "info",
         area: "storage",
         event: "backup.import_completed",
         moduleId,
@@ -866,7 +883,7 @@ export function createSessionManager(
           failedCount: summary.failed,
         },
       });
-      return { ...summary, preparation };
+      return { ...summary, preparation, refreshFailed };
     }, "Another data operation is already active");
   }
 
@@ -896,25 +913,50 @@ export function createSessionManager(
       > | null = null;
       try {
         saveSnapshot = await owner.storage.clearManagedFiles();
-        localData.clear();
-        resetLocalState();
       } catch (error) {
-        if (saveSnapshot) {
-          try {
-            localData.restore(localSnapshot);
-            await owner.storage.restoreManagedFiles(saveSnapshot);
-          } catch (restoreError) {
-            const aggregate = new AggregateError(
-              [error, restoreError],
-              "Could not clear or restore local data",
-            );
-            await reportFatal(
-              "storage",
-              "local_data.clear_rollback_failed",
-              aggregate,
-            );
-            throw aggregate;
-          }
+        if (error instanceof AggregateError) {
+          await reportFatal(
+            "storage",
+            "local_data.clear_rollback_failed",
+            error,
+          );
+        } else {
+          recordDiagnostic({
+            level: "error",
+            area: "storage",
+            event: "local_data.clear_failed",
+            moduleId,
+            detail: { errorName: diagnosticErrorName(error) },
+          });
+        }
+        throw error;
+      }
+
+      try {
+        localData.clear();
+      } catch (error) {
+        const restoreErrors: unknown[] = [];
+        try {
+          localData.restore(localSnapshot);
+        } catch (restoreError) {
+          restoreErrors.push(restoreError);
+        }
+        try {
+          await owner.storage.restoreManagedFiles(saveSnapshot);
+        } catch (restoreError) {
+          restoreErrors.push(restoreError);
+        }
+        if (restoreErrors.length > 0) {
+          const aggregate = new AggregateError(
+            [error, ...restoreErrors],
+            "Could not clear or restore local data",
+          );
+          await reportFatal(
+            "storage",
+            "local_data.clear_rollback_failed",
+            aggregate,
+          );
+          throw aggregate;
         }
         recordDiagnostic({
           level: "error",
@@ -923,6 +965,13 @@ export function createSessionManager(
           moduleId,
           detail: { errorName: diagnosticErrorName(error) },
         });
+        throw error;
+      }
+
+      try {
+        resetLocalState();
+      } catch (error) {
+        await reportFatal("app", "local_data.memory_reset_failed", error);
         throw error;
       }
 

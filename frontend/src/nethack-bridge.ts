@@ -321,11 +321,12 @@ export async function validateSaveBytes(
       ["number", "number"],
       [outputPtr, outputSize],
     ));
-    if (fingerprintSize <= 0 || fingerprintSize > outputSize) {
-      return {
-        status: "damaged",
-        reason: "validation-failed",
-      };
+    if (
+      !Number.isInteger(fingerprintSize)
+      || fingerprintSize <= 0
+      || fingerprintSize > outputSize
+    ) {
+      throw new Error("Current save fingerprint is unavailable");
     }
 
     if (fileData.length < fingerprintSize + 4 + 49) {

@@ -505,11 +505,11 @@ NetHack 存档很小，本版本不为此引入 ZIP 依赖。
 
 最终验收结果：
 
-- `npm test`：36 个测试文件、354 项断言通过。
+- `npm test`：36 个测试文件、364 项断言通过。
 - `npm run lint -- --deny-warnings`：0 warning、0 error。
 - `npm run build`：TypeScript 和 Vite 生产构建通过，运行时三件套校验通过。
 - `npm run test:integration:wasm`：33 项真实 WASM 断言通过。
-- `npm run test:integration:browser`：21 条 Chromium 流程通过。
+- `npm run test:integration:browser`：22 条 Chromium 流程通过。
 - `npm run test:long`：4 条长流程通过。
 - `git diff --check` 通过。
 

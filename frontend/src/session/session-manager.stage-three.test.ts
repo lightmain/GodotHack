@@ -3,6 +3,8 @@ import type { AppAction } from "../app/app-state";
 import { resetGameState } from "../game-state";
 import type { EmscriptenModule } from "../nethack-bridge";
 import type { LocalDataStore } from "../storage/local-data";
+import type { BackupImportPreview } from "../backup/backup-operations";
+import { createDefaultProfile } from "../settings/profile";
 import {
   createSessionManager,
   type SessionManagerOptions,
@@ -66,6 +68,16 @@ interface StageThreeManager {
     localData: LocalDataStore,
     resetLocalState: () => void,
   ): Promise<unknown>;
+  importFullBackup(
+    moduleId: string,
+    preview: BackupImportPreview,
+    overwriteFileNames: ReadonlySet<string>,
+  ): Promise<{
+    imported: number;
+    skipped: number;
+    failed: number;
+    refreshFailed: boolean;
+  }>;
 }
 
 const adaIdentity: SaveIdentity = {
@@ -308,5 +320,131 @@ describe("local data clearing", () => {
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({
       type: "LOCAL_DATA_CLEARED",
     }));
+  });
+
+  it("enters fatal when the storage clear cannot roll back", async () => {
+    const failure = new AggregateError([], "storage rollback failed");
+    const storage = {
+      initialize: vi.fn(async () => true),
+      listSaves: vi.fn(async () => [adaSave]),
+      clearManagedFiles: vi.fn(async () => {
+        throw failure;
+      }),
+      restoreManagedFiles: vi.fn(async () => undefined),
+      importSave: vi.fn(),
+      exportSave: vi.fn(),
+      readSave: vi.fn(),
+      restoreOriginalSave: vi.fn(),
+      deleteSave: vi.fn(),
+      flush: vi.fn(async () => undefined),
+    };
+    const localData: LocalDataStore = {
+      snapshot: vi.fn(() => ({ values: {} })),
+      clear: vi.fn(),
+      restore: vi.fn(),
+    };
+    const { manager, dispatch } = createManager(storage);
+    await manager.initialize();
+    dispatch.mockClear();
+
+    await expect(manager.clearLocalData(
+      "module-1",
+      localData,
+      vi.fn(),
+    )).rejects.toBe(failure);
+
+    expect(localData.clear).not.toHaveBeenCalled();
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
+      type: "MODULE_FATAL_ERROR",
+      moduleId: "module-1",
+    }));
+  });
+
+  it("attempts IDBFS restoration even when local key restoration fails", async () => {
+    const snapshot = [{
+      path: "/save/0Ada",
+      bytes: Uint8Array.of(1),
+    }];
+    const storage = {
+      initialize: vi.fn(async () => true),
+      listSaves: vi.fn(async () => [adaSave]),
+      clearManagedFiles: vi.fn(async () => snapshot),
+      restoreManagedFiles: vi.fn(async () => undefined),
+      importSave: vi.fn(),
+      exportSave: vi.fn(),
+      readSave: vi.fn(),
+      restoreOriginalSave: vi.fn(),
+      deleteSave: vi.fn(),
+      flush: vi.fn(async () => undefined),
+    };
+    const localData: LocalDataStore = {
+      snapshot: vi.fn(() => ({ values: {} })),
+      clear: vi.fn(() => {
+        throw new Error("clear failed");
+      }),
+      restore: vi.fn(() => {
+        throw new Error("restore failed");
+      }),
+    };
+    const { manager, dispatch } = createManager(storage);
+    await manager.initialize();
+    dispatch.mockClear();
+
+    await expect(manager.clearLocalData(
+      "module-1",
+      localData,
+      vi.fn(),
+    )).rejects.toThrow("Could not clear or restore local data");
+
+    expect(storage.restoreManagedFiles).toHaveBeenCalledWith(snapshot);
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
+      type: "MODULE_FATAL_ERROR",
+      moduleId: "module-1",
+    }));
+  });
+});
+
+describe("full backup import refresh", () => {
+  it("preserves per-file results when final save enumeration fails", async () => {
+    const storage = {
+      initialize: vi.fn(async () => true),
+      listSaves: vi.fn()
+        .mockResolvedValueOnce([])
+        .mockRejectedValueOnce(new Error("refresh failed")),
+      importSave: vi.fn(),
+      exportSave: vi.fn(),
+      readSave: vi.fn(),
+      restoreOriginalSave: vi.fn(),
+      deleteSave: vi.fn(),
+      flush: vi.fn(async () => undefined),
+    };
+    const preview: BackupImportPreview = {
+      source: {
+        productVersion: "prealpha-3",
+        buildId: "test",
+        exportedAt: "2026-09-06T12:00:00.000Z",
+        profile: createDefaultProfile(),
+      },
+      entries: [{
+        fileName: "0Old",
+        bytes: Uint8Array.of(1),
+        classification: "incompatible",
+        identity: null,
+        existing: null,
+      }],
+    };
+    const { manager } = createManager(storage);
+    await manager.initialize();
+
+    await expect(manager.importFullBackup(
+      "module-1",
+      preview,
+      new Set(),
+    )).resolves.toMatchObject({
+      imported: 0,
+      skipped: 1,
+      failed: 0,
+      refreshFailed: true,
+    });
   });
 });

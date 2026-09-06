@@ -29,14 +29,16 @@ import type { ProfileLoadStatus } from "../settings/profile-store";
 import { PRODUCT_VERSION } from "../version";
 import type {
   BackupImportPreview,
-  BackupImportSummary,
 } from "../backup/backup-operations";
-import type { FullBackupExport } from "../session/session-manager";
+import type {
+  FullBackupExport,
+  FullBackupImportResult,
+} from "../session/session-manager";
 import { DataManagementSection } from "./DataManagementSection";
 
 interface SettingsScreenProps {
   context?: "home" | "game";
-  diagnosticCount?: number;
+  getDiagnosticCount?: () => number;
   loadStatus: ProfileLoadStatus;
   moduleId: string;
   onApply(profile: BlissHackProfileV1): BlissHackProfileV1;
@@ -46,7 +48,7 @@ interface SettingsScreenProps {
   onImportFullBackup?: (
     preview: BackupImportPreview,
     overwriteFileNames: ReadonlySet<string>,
-  ) => Promise<BackupImportSummary>;
+  ) => Promise<FullBackupImportResult>;
   onPersistenceResult?: (result: string) => void;
   onPreviewFullBackup?: (
     bytes: Uint8Array,
@@ -104,7 +106,7 @@ const NUMBER_PAD_OPTIONS: ReadonlyArray<{
  */
 export function SettingsScreen({
   context = "home",
-  diagnosticCount = 0,
+  getDiagnosticCount = () => 0,
   loadStatus,
   moduleId,
   onApply,
@@ -492,8 +494,8 @@ export function SettingsScreen({
 
         {!isGameSettings && (
           <DataManagementSection
-            diagnosticCount={diagnosticCount}
             dirty={dirty}
+            getDiagnosticCount={getDiagnosticCount}
             onApplyProfile={(candidate) => {
               const saved = onApply(candidate);
               setDraft(saved);
@@ -505,7 +507,9 @@ export function SettingsScreen({
             onPersistenceResult={onPersistenceResult}
             onPreviewFullBackup={onPreviewFullBackup}
             profile={profile}
-            profilePresent={loadStatus === "loaded"}
+            profilePresent={
+              loadStatus !== "missing" && loadStatus !== "unavailable"
+            }
             saveCount={saveCount}
             storageAvailable={
               saveStorageAvailable && loadStatus !== "unavailable"

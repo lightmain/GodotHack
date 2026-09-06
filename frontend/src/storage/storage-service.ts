@@ -6,6 +6,10 @@ import {
 
 /** Largest raw save accepted before allocating or writing imported content. */
 export const MAX_RAW_SAVE_BYTES = 64 * 1024 * 1024;
+/** Largest number of direct files copied for a clear rollback. */
+export const MAX_MANAGED_STORAGE_FILES = 1_000;
+/** Largest aggregate byte snapshot copied for a clear rollback. */
+export const MAX_MANAGED_STORAGE_BYTES = 64 * 1024 * 1024;
 
 /** File-system operations required from an Emscripten module. */
 export interface StorageFileSystem {
@@ -16,7 +20,7 @@ export interface StorageFileSystem {
   readFile(path: string): string | Uint8Array;
   readdir(path: string): string[];
   rename(oldPath: string, newPath: string): unknown;
-  stat(path: string): { mode: number; mtime?: Date | number };
+  stat(path: string): { mode: number; mtime?: Date | number; size?: number };
   syncfs(
     populate: boolean,
     callback: (error: unknown | null) => void,
@@ -202,21 +206,12 @@ export function createStorageService(
       }
       if (!module.FS.isFile(stat.mode)) continue;
 
-      try {
-        const validation = await options.validateSaveMetadata(module, path);
-        entries.push({
-          path,
-          modifiedAt: fileModificationTime(stat),
-          ...validation,
-        });
-      } catch {
-        entries.push({
-          path,
-          modifiedAt: fileModificationTime(stat),
-          status: "damaged",
-          reason: "validation-failed",
-        });
-      }
+      const validation = await options.validateSaveMetadata(module, path);
+      entries.push({
+        path,
+        modifiedAt: fileModificationTime(stat),
+        ...validation,
+      });
     }
     return entries.sort(compareSaveEntries);
   }
@@ -266,13 +261,17 @@ export function createStorageService(
 
   /** Read every formal save, including incompatible and damaged entries. */
   async function exportAllSaves(): Promise<BackupSaveBytes[]> {
-    const saves = await listSaves();
     const result: BackupSaveBytes[] = [];
-    for (const save of [...saves].sort((left, right) =>
-      left.path < right.path ? -1 : left.path > right.path ? 1 : 0)) {
+    const fileNames = module.FS.readdir(SAVE_DIRECTORY)
+      .filter(isSaveCandidate)
+      .sort(compareCodePoints);
+    for (const fileName of fileNames) {
+      const path = `${SAVE_DIRECTORY}/${fileName}`;
+      const stat = module.FS.stat(path);
+      if (!module.FS.isFile(stat.mode)) continue;
       result.push({
-        fileName: save.path.slice(`${SAVE_DIRECTORY}/`.length),
-        bytes: await readSave(save.path),
+        fileName,
+        bytes: await readSave(path),
       });
     }
     return result;
@@ -390,14 +389,31 @@ export function createStorageService(
   /** Copy every regular direct child owned by the dedicated /save mount. */
   function snapshotManagedFiles(): ManagedStorageFile[] {
     const files: ManagedStorageFile[] = [];
+    let totalBytes = 0;
     for (const fileName of module.FS.readdir(SAVE_DIRECTORY)) {
       if (fileName === "." || fileName === "..") continue;
       const path = `${SAVE_DIRECTORY}/${fileName}`;
       const stat = module.FS.stat(path);
       if (!module.FS.isFile(stat.mode)) continue;
+      if (files.length >= MAX_MANAGED_STORAGE_FILES) {
+        throw new Error("Local save storage contains too many files to clear safely");
+      }
+      if (
+        typeof stat.size === "number"
+        && (
+          stat.size < 0
+          || stat.size > MAX_MANAGED_STORAGE_BYTES - totalBytes
+        )
+      ) {
+        throw new Error("Local save storage exceeds the safe clear limit");
+      }
       const bytes = module.FS.readFile(path);
       if (typeof bytes === "string") {
         throw new Error(`Expected binary storage data at ${path}`);
+      }
+      totalBytes += bytes.byteLength;
+      if (totalBytes > MAX_MANAGED_STORAGE_BYTES) {
+        throw new Error("Local save storage exceeds the safe clear limit");
       }
       files.push({ path, bytes: bytes.slice() });
     }
@@ -465,7 +481,20 @@ function assertSavePath(path: string): void {
 function compareSaveEntries(left: SaveListEntry, right: SaveListEntry): number {
   const leftName = left.status === "ready" ? left.identity.playerName : left.path;
   const rightName = right.status === "ready" ? right.identity.playerName : right.path;
-  return leftName.localeCompare(rightName);
+  return compareCodePoints(leftName, rightName);
+}
+
+/** Compare strings by Unicode code point rather than UTF-16 code unit. */
+function compareCodePoints(left: string, right: string): number {
+  const leftPoints = Array.from(left, (value) => value.codePointAt(0) as number);
+  const rightPoints = Array.from(right, (value) => value.codePointAt(0) as number);
+  const count = Math.min(leftPoints.length, rightPoints.length);
+  for (let index = 0; index < count; index += 1) {
+    if (leftPoints[index] !== rightPoints[index]) {
+      return leftPoints[index] - rightPoints[index];
+    }
+  }
+  return leftPoints.length - rightPoints.length;
 }
 
 /** Return stable user-facing text for a save which cannot be continued. */

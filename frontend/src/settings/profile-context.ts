@@ -6,6 +6,7 @@ export interface ProfileContextValue {
   profile: BlissHackProfileV1;
   loadStatus: ProfileLoadStatus;
   clearProfile(): BlissHackProfileV1;
+  resetProfile(): BlissHackProfileV1;
   replaceProfile(profile: BlissHackProfileV1): BlissHackProfileV1;
 }
 

@@ -2,6 +2,7 @@ import { expect, test } from "./fixtures";
 import { captureErrors } from "./helpers/browser-errors";
 import {
   continueSavedGame,
+  openHome,
   saveAndReturnHome,
   startNewGame,
 } from "./helpers/game-flow";
@@ -54,9 +55,15 @@ test("exports, clears, and restores a complete BlissHack backup", async ({
   );
   expect(backup.saves[0].sha256).toMatch(/^[0-9a-f]{64}$/);
 
+  const diagnosticCount = await page.evaluate(() => {
+    const raw = localStorage.getItem("blisshack.diagnostics.v1");
+    if (!raw) return 0;
+    return (JSON.parse(raw) as { events?: unknown[] }).events?.length ?? 0;
+  });
   await page.getByRole("button", { name: "Clear Local Data" }).click();
   const clear = page.getByRole("alertdialog", { name: "Clear local data" });
   await expect(clear.getByRole("textbox")).toBeFocused();
+  await expect(clear).toContainText(`${diagnosticCount} diagnostic events`);
   await clear.getByRole("textbox").fill("CLEAR BLISSHACK DATA");
   await clear.getByRole("button", { name: "Clear", exact: true }).click();
   await expect(page.getByRole("button", { name: "New Game" })).toBeVisible();
@@ -165,4 +172,42 @@ test("exports the exact bytes of an incompatible formal save", async ({
   const rescued = await readDownload(await downloadPromise);
   expect(rescued).toEqual(incompatible);
   expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("restores data-action focus after recoverable failures", async ({
+  page,
+}) => {
+  await openHome(page, "backup-error-focus");
+  await page.getByRole("button", { name: "Settings" }).click();
+
+  await page.getByLabel("Import full backup file").setInputFiles({
+    name: "invalid.bhbackup",
+    mimeType: "application/json",
+    buffer: Buffer.from("{bad"),
+  });
+  await expect(page.getByText(
+    "The selected backup is damaged, unsupported, or invalid.",
+  )).toBeVisible();
+  await expect(page.getByRole("button", {
+    name: "Import Full Backup",
+    exact: true,
+  })).toBeFocused();
+
+  await page.evaluate(() => {
+    const original = Storage.prototype.removeItem;
+    Storage.prototype.removeItem = function failOnce(key: string): void {
+      Storage.prototype.removeItem = original;
+      throw new Error(`blocked ${key}`);
+    };
+  });
+  await page.getByRole("button", { name: "Clear Local Data" }).click();
+  const clear = page.getByRole("alertdialog", { name: "Clear local data" });
+  await clear.getByRole("textbox").fill("CLEAR BLISSHACK DATA");
+  await clear.getByRole("button", { name: "Clear", exact: true }).click();
+
+  await expect(page.getByText(
+    "Local data could not be cleared. Existing data was preserved when possible.",
+  )).toBeVisible();
+  await expect(page.getByRole("button", { name: "Clear Local Data" }))
+    .toBeFocused();
 });

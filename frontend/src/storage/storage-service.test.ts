@@ -287,6 +287,34 @@ describe("save file access", () => {
     ]);
   });
 
+  it("fails a complete export when a formal file cannot be stated", async () => {
+    const harness = createStorageModuleHarness();
+    harness.files.set("/save/0Ada", Uint8Array.of(1));
+    harness.module.FS.stat.mockImplementation((path: string) => {
+      if (path === "/save/0Ada") throw new Error("stat failed");
+      return { mode: 0x4000 };
+    });
+    const service = await createService(harness);
+    const initialization = service.initialize();
+    harness.syncRequests[0].complete();
+    await initialization;
+
+    await expect(service.exportAllSaves()).rejects.toThrow("stat failed");
+  });
+
+  it("propagates validator failures instead of damaging every listed save", async () => {
+    const harness = createStorageModuleHarness();
+    harness.files.set("/save/0Ada", Uint8Array.of(1));
+    const service = await createService(harness, async () => {
+      throw new Error("fingerprint unavailable");
+    });
+    const initialization = service.initialize();
+    harness.syncRequests[0].complete();
+    await initialization;
+
+    await expect(service.listSaves()).rejects.toThrow("fingerprint unavailable");
+  });
+
   it("rejects a missing save read instead of returning guessed content", async () => {
     const harness = createStorageModuleHarness();
     const service = await createService(harness);
@@ -318,6 +346,27 @@ describe("save file access", () => {
 });
 
 describe("managed storage clearing", () => {
+  it("refuses an oversized rollback snapshot before deleting files", async () => {
+    const harness = createStorageModuleHarness();
+    harness.files.set("/save/0Ada", Uint8Array.of(1));
+    harness.module.FS.stat.mockImplementation((path: string) => {
+      if (path === "/save/0Ada") {
+        return { mode: 0x8000, size: 64 * 1024 * 1024 + 1 };
+      }
+      return { mode: 0x4000 };
+    });
+    const service = await createService(harness);
+    const initialization = service.initialize();
+    harness.syncRequests[0].complete();
+    await initialization;
+
+    await expect(service.clearManagedFiles()).rejects.toThrow(
+      "safe clear limit",
+    );
+    expect(harness.files.get("/save/0Ada")).toEqual(Uint8Array.of(1));
+    expect(harness.module.FS.unlink).not.toHaveBeenCalled();
+  });
+
   it("clears all regular mount files and can restore the returned snapshot", async () => {
     const harness = createStorageModuleHarness();
     harness.files.set("/save/0Ada", Uint8Array.of(1));

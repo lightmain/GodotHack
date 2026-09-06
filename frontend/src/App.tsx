@@ -39,10 +39,10 @@ function App({
 }) {
   const [state, dispatch] = useReducer(appReducer, initialAppState);
   const {
-    clearProfile,
     loadStatus,
     profile,
     replaceProfile,
+    resetProfile,
   } = useProfileSettings();
   const sessionManager = useMemo(
     () => createSessionManager({
@@ -195,8 +195,8 @@ function App({
       state.moduleId,
       browserLocalDataStore(),
       () => {
-        clearProfile();
-        diagnostics.clear();
+        resetProfile();
+        diagnostics.reset();
       },
     );
   }
@@ -250,7 +250,7 @@ function App({
     const preparation = sessionManager.getHomePreparation();
     return (
       <SettingsScreen
-        diagnosticCount={diagnostics.events().length}
+        getDiagnosticCount={() => diagnostics.events().length}
         loadStatus={loadStatus}
         moduleId={state.moduleId}
         onApply={replaceProfile}

@@ -44,6 +44,27 @@ describe("full backup format", () => {
     ]);
   });
 
+  it("sorts non-BMP names by Unicode code point", async () => {
+    const json = await serializeBackup(
+      createDefaultProfile(),
+      [
+        { fileName: "0\u{10000}", bytes: Uint8Array.of(2) },
+        { fileName: "0\uE000", bytes: Uint8Array.of(1) },
+      ],
+      "prealpha-3",
+      "development",
+      exportedAt,
+    );
+    const document = JSON.parse(json) as {
+      saves: Array<{ fileName: string }>;
+    };
+
+    expect(document.saves.map((save) => save.fileName)).toEqual([
+      "0\uE000",
+      "0\u{10000}",
+    ]);
+  });
+
   it("round-trips a profile-only backup", async () => {
     const json = await serializeBackup(
       createDefaultProfile(),

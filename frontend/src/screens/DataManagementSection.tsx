@@ -28,18 +28,21 @@ import {
 } from "../storage/persistence";
 import { diffProfiles } from "../settings/profile-diff";
 import type { BlissHackProfileV1 } from "../settings/profile";
-import type { FullBackupExport } from "../session/session-manager";
+import type {
+  FullBackupExport,
+  FullBackupImportResult,
+} from "../session/session-manager";
 
 interface DataManagementSectionProps {
-  diagnosticCount: number;
   dirty: boolean;
+  getDiagnosticCount(): number;
   onApplyProfile(profile: BlissHackProfileV1): BlissHackProfileV1;
   onClearLocalData(): Promise<void>;
   onExportFullBackup(): Promise<FullBackupExport>;
   onImportFullBackup(
     preview: BackupImportPreview,
     overwriteFileNames: ReadonlySet<string>,
-  ): Promise<BackupImportSummary>;
+  ): Promise<FullBackupImportResult>;
   onPersistenceResult?(result: string): void;
   onPreviewFullBackup(bytes: Uint8Array): Promise<BackupImportPreview>;
   persistenceAdapter?: PersistenceAdapter;
@@ -51,7 +54,7 @@ interface DataManagementSectionProps {
 
 interface CompletedImport {
   preview: BackupImportPreview;
-  summary: BackupImportSummary;
+  summary: FullBackupImportResult;
   profileApplied: boolean | null;
 }
 
@@ -63,8 +66,8 @@ const IGNORE_PERSISTENCE_RESULT = () => undefined;
  * @param props - current data counts and application-owned operations.
  */
 export function DataManagementSection({
-  diagnosticCount,
   dirty,
+  getDiagnosticCount,
   onApplyProfile,
   onClearLocalData,
   onExportFullBackup,
@@ -88,6 +91,7 @@ export function DataManagementSection({
   const [overwrites, setOverwrites] = useState<Set<string>>(new Set());
   const [completed, setCompleted] = useState<CompletedImport | null>(null);
   const [clearOpen, setClearOpen] = useState(false);
+  const [clearDiagnosticCount, setClearDiagnosticCount] = useState(0);
   const [clearText, setClearText] = useState("");
   const importRef = useRef<HTMLInputElement>(null);
   const exportRef = useRef<HTMLButtonElement>(null);
@@ -151,6 +155,7 @@ export function DataManagementSection({
     setError(null);
     if (file.size > BACKUP_IMPORT_MAX_BYTES) {
       setError("The selected backup exceeds the 96 MiB limit.");
+      restoreFocus(importButtonRef);
       return;
     }
     setPending(true);
@@ -162,6 +167,7 @@ export function DataManagementSection({
       setPreview(nextPreview);
     } catch {
       setError("The selected backup is damaged, unsupported, or invalid.");
+      restoreFocus(importButtonRef);
     } finally {
       setPending(false);
     }
@@ -179,6 +185,7 @@ export function DataManagementSection({
     } catch {
       setError("Backup import stopped because local save data could not be restored.");
       setPreview(null);
+      restoreFocus(importButtonRef);
     } finally {
       setPending(false);
     }
@@ -206,6 +213,7 @@ export function DataManagementSection({
       setError("Local data could not be cleared. Existing data was preserved when possible.");
       setClearOpen(false);
       setClearText("");
+      restoreFocus(clearButtonRef);
     } finally {
       setPending(false);
     }
@@ -276,6 +284,7 @@ export function DataManagementSection({
               disabled={blocked}
               onClick={() => {
                 setClearText("");
+                setClearDiagnosticCount(getDiagnosticCount());
                 setClearOpen(true);
               }}
               ref={clearButtonRef}
@@ -374,10 +383,12 @@ export function DataManagementSection({
       {completed && (
         <Modal
           label="Backup import results"
-          onCancel={() => {
-            setCompleted(null);
-            restoreFocus(importButtonRef);
-          }}
+          onCancel={completed.summary.refreshFailed
+            ? undefined
+            : () => {
+              setCompleted(null);
+              restoreFocus(importButtonRef);
+            }}
         >
           <h2>Backup import results</h2>
           <div className="backup-result-counts" role="status">
@@ -385,6 +396,12 @@ export function DataManagementSection({
             <span><strong>{completed.summary.skipped}</strong> skipped</span>
             <span><strong>{completed.summary.failed}</strong> failed</span>
           </div>
+          {completed.summary.refreshFailed && (
+            <p className="settings-warning" role="alert">
+              Saved games were processed, but the list could not be refreshed.
+              Reload BlissHack before starting a game.
+            </p>
+          )}
           <details className="backup-result-details">
             <summary>Individual save results</summary>
             <ul>
@@ -409,12 +426,20 @@ export function DataManagementSection({
               autoFocus
               data-modal-initial-focus
               onClick={() => {
+                if (completed.summary.refreshFailed) {
+                  globalThis.location.reload();
+                  return;
+                }
                 setCompleted(null);
                 restoreFocus(importButtonRef);
               }}
               type="button"
             >
-              {completed.profileApplied === true ? "Close" : "Keep Current Profile"}
+              {completed.summary.refreshFailed
+                ? "Reload BlissHack"
+                : completed.profileApplied === true
+                ? "Close"
+                : "Keep Current Profile"}
             </button>
             <button
               className="settings-primary"
@@ -445,10 +470,11 @@ export function DataManagementSection({
           }}
         >
           <h2>Clear local data</h2>
+          {error && <p className="settings-error" role="alert">{error}</p>}
           <p>
             This deletes {saveCount} saved games, {profilePresent
               ? "the saved profile"
-              : "no saved profile"}, and {diagnosticCount} diagnostic events.
+              : "no saved profile"}, and {clearDiagnosticCount} diagnostic events.
           </p>
           <button
             disabled={pending}
@@ -654,5 +680,11 @@ function downloadText(exported: FullBackupExport): void {
 function restoreFocus(
   ref: { readonly current: HTMLElement | null },
 ): void {
-  globalThis.setTimeout(() => ref.current?.focus(), 0);
+  globalThis.setTimeout(() => {
+    if (typeof globalThis.requestAnimationFrame === "function") {
+      globalThis.requestAnimationFrame(() => ref.current?.focus());
+    } else {
+      ref.current?.focus();
+    }
+  }, 0);
 }

@@ -99,6 +99,7 @@ export interface DiagnosticLog {
   ): { errorId: string; event: DiagnosticEvent };
   events(): DiagnosticEvent[];
   clear(): void;
+  reset(): void;
   exportData(): DiagnosticExport;
   exportJson(): string;
 }
@@ -200,13 +201,19 @@ export function createDiagnosticLog(
 
   /** Delete prior persisted and in-memory events after explicit user confirmation. */
   function clear(): void {
+    if (storage) {
+      if (!storage.removeItem) {
+        throw new Error("Diagnostic storage cannot be cleared");
+      }
+      storage.removeItem(DIAGNOSTIC_STORAGE_KEY);
+    }
+    reset();
+  }
+
+  /** Start a fresh in-memory diagnostic generation without touching storage. */
+  function reset(): void {
     records = [];
     nextSequence = 1;
-    if (!storage) return;
-    if (!storage.removeItem) {
-      throw new Error("Diagnostic storage cannot be cleared");
-    }
-    storage.removeItem(DIAGNOSTIC_STORAGE_KEY);
   }
 
   /** Build the versioned portable diagnostic document. */
@@ -230,6 +237,7 @@ export function createDiagnosticLog(
     recordFatal,
     events,
     clear,
+    reset,
     exportData,
     exportJson: () => JSON.stringify(exportData(), null, 2),
   };

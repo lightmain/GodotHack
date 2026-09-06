@@ -790,11 +790,13 @@ git diff --check
 最终自动验收：
 
 - `npm run lint -- --deny-warnings`：0 warning、0 error。
-- `npm test`：36 个测试文件、354 项断言通过。
+- `npm test`：36 个测试文件、364 项断言通过。
 - `npm run build`：TypeScript、Vite 和运行时三件套校验通过。
 - `npm run test:integration:wasm`：33 项真实 WASM 断言通过。
-- `npm run test:integration:browser`：21 条 Chromium 流程通过。
+- `npm run test:integration:browser`：22 条 Chromium 流程通过。
 - `npm run test:long`：4 条长流程通过。
 - 完整备份清除与恢复、不兼容存档救援下载均使用真实浏览器和 IDBFS 验证。
 - Settings Data 区段和清除 modal 已检查窄视口布局、初始焦点和遮罩关系。
+- 独立代码审查后补强了严格备份枚举、验证器错误传播、清除补偿和 fatal
+  分类、内存状态重置、快照资源上限、Unicode 排序、刷新失败报告和失败焦点。
 - `git diff --check` 通过。
