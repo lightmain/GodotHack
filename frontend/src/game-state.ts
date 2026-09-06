@@ -71,6 +71,14 @@ export interface MenuItem {
   itemFlags: number;
 }
 
+/** One complete permanent-inventory update committed by NetHack. */
+export interface PermanentInventoryState {
+  revision: number;
+  windowId: number;
+  prompt: string;
+  items: readonly MenuItem[];
+}
+
 /** Mutable content associated with a NetHack window ID. */
 export interface WindowState {
   id: number;
@@ -137,6 +145,7 @@ export interface GameSnapshot {
   runtimeSettingsStatus: "idle" | "pending" | "applied";
   numberPad: boolean;
   inventoryWindowId: number | null;
+  permanentInventory: PermanentInventoryState | null;
   bellCount: number;
   clipCenter: { x: number; y: number } | null;
   lastPreference: string | null;
@@ -151,6 +160,7 @@ let pendingStatus: Record<number, StatusValue> = {};
 let pendingMapRows = new Map<number, MapCell[]>();
 let restoredMessageHistory: TextLine[] | null = null;
 let currentMessageHistory: TextLine[] | null = null;
+let permanentInventoryRevision = 0;
 let snapshot = createInitialSnapshot();
 
 /**
@@ -188,6 +198,7 @@ function createInitialSnapshot(): GameSnapshot {
     runtimeSettingsStatus: "idle",
     numberPad: false,
     inventoryWindowId: null,
+    permanentInventory: null,
     bellCount: 0,
     clipCenter: null,
     lastPreference: null,
@@ -233,6 +244,7 @@ export function resetGameState(): void {
   nextWindowId = 1;
   pendingStatus = {};
   pendingMapRows = new Map();
+  permanentInventoryRevision = 0;
   restoredMessageHistory = null;
   currentMessageHistory = null;
   snapshot = createInitialSnapshot();
@@ -322,11 +334,15 @@ export function destroyWindow(winid: number): void {
   const inventoryWindowId = snapshot.inventoryWindowId === winid
     ? null
     : snapshot.inventoryWindowId;
+  const permanentInventory = snapshot.permanentInventory?.windowId === winid
+    ? null
+    : snapshot.permanentInventory;
   if (
     modal !== snapshot.modal
     || inventoryWindowId !== snapshot.inventoryWindowId
+    || permanentInventory !== snapshot.permanentInventory
   ) {
-    publish({ modal, inventoryWindowId });
+    publish({ modal, inventoryWindowId, permanentInventory });
   }
 }
 
@@ -619,7 +635,21 @@ export function setNumberPad(enabled: boolean): void {
  * @param winid - persistent inventory window ID.
  */
 export function setInventoryWindow(winid: number): void {
-  publish({ inventoryWindowId: winid });
+  const window = windows.get(winid);
+  if (!window || window.menuBehavior !== MENU_BEHAVE_PERMINV) return;
+  permanentInventoryRevision += 1;
+  publish({
+    inventoryWindowId: winid,
+    permanentInventory: {
+      revision: permanentInventoryRevision,
+      windowId: winid,
+      prompt: window.menuPrompt,
+      items: window.menuItems.map((item) => ({
+        ...item,
+        glyph: item.glyph ? { ...item.glyph } : null,
+      })),
+    },
+  });
 }
 
 /**

@@ -49,6 +49,33 @@ test("installs current settings for new and continued games", async ({ page }) =
   expect(errors).toEqual({ console: [], page: [] });
 });
 
+test("renders and collapses the core permanent inventory without a modal", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await openHome(page, "permanent-inventory");
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("checkbox", {
+    name: "Offer tutorial for new games",
+  }).uncheck();
+  await page.getByRole("checkbox", { name: "Permanent inventory" }).check();
+  await page.getByRole("button", { name: "Apply" }).click();
+
+  await startWithoutTutorial(page, "PermInventory");
+  const inventory = page.getByRole("region", { name: "Inventory" });
+  await expect(inventory).toBeVisible();
+  await expect(inventory).toContainText(/\d+ items?/);
+  await expect(page.locator(".nh-menu-dialog")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Collapse inventory" }).click();
+  await expect(
+    page.getByRole("button", { name: "Expand inventory" }),
+  ).toBeVisible();
+  await expect(inventory.locator(".permanent-inventory-item")).toHaveCount(0);
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
 /** Start a random character when !tutorial removes the final prompt. */
 async function startWithoutTutorial(page: Page, name: string): Promise<void> {
   await page.getByRole("button", { name: "New Game" }).click();

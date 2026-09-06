@@ -23,6 +23,14 @@ function buttonMarkup(html: string, label: string): string {
   return match ?? "";
 }
 
+function labelMarkup(html: string, text: string): string {
+  const match = [...html.matchAll(/<label\b[^>]*>[\s\S]*?<\/label>/gi)]
+    .map((entry) => entry[0])
+    .find((label) => label.includes(text));
+  expect(match, `missing ${text} field`).toBeDefined();
+  return match ?? "";
+}
+
 describe("SettingsScreen", () => {
   it("renders all reviewed fields and keeps the prepared module identity", () => {
     const html = renderSettings();
@@ -35,6 +43,9 @@ describe("SettingsScreen", () => {
     expect(html).toContain("Terminal font size");
     expect(html).toContain("Message history");
     expect(html).toContain("Follow player on the map");
+    expect(html).toContain("Inventory position");
+    expect(html).toContain("Inventory width");
+    expect(html).toContain("Start inventory collapsed");
     expect(html).toContain("Offer tutorial for new games");
     expect(html).toContain("Automatic pickup");
     expect(html).toContain("Pickup categories");
@@ -43,6 +54,11 @@ describe("SettingsScreen", () => {
     expect(html).toContain("Sort inventory");
     expect(html).toContain("Show experience");
     expect(html).toContain("Show turn count");
+    expect(html).toContain("Permanent inventory");
+    expect(html).toContain("Inventory contents");
+    expect(html).toContain("All except gold");
+    expect(html).toContain("Full including gold");
+    expect(html).toContain("Items in use");
     expect(html).toContain("Export Full Backup");
     expect(html).toContain("Import Full Backup");
     expect(html).toContain("Clear Local Data");
@@ -54,6 +70,11 @@ describe("SettingsScreen", () => {
     expect(html).toMatch(/<input(?=[^>]*checked="")(?=[^>]*value="medium")[^>]*>/);
     expect(html).toMatch(/<input(?=[^>]*checked="")(?=[^>]*value="5")[^>]*>/);
     expect(html).toContain("<option value=\"0\" selected=\"\">");
+    expect(html).toMatch(/<input(?=[^>]*checked="")(?=[^>]*value="right")[^>]*>/);
+    expect(html).toContain('<option value="standard" selected="">');
+    expect(labelMarkup(html, "Permanent inventory")).not.toContain("checked");
+    expect(html).toContain('<option value="all" selected="">');
+    expect(labelMarkup(html, "Start inventory collapsed")).not.toContain("checked");
     expect(html).toContain("No unsaved changes");
     expect(buttonMarkup(html, "Apply")).toMatch(/\sdisabled(?:=""|>)/i);
   });
@@ -98,5 +119,7 @@ describe("SettingsScreen", () => {
     expect(html).not.toContain("Export Profile");
     expect(html).not.toContain("Export Full Backup");
     expect(html).not.toContain("Clear Local Data");
+    expect(html).toContain("Permanent inventory");
+    expect(html).toContain("Inventory contents");
   });
 });

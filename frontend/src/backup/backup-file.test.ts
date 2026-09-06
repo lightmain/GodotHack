@@ -78,6 +78,39 @@ describe("full backup format", () => {
       .resolves.toMatchObject({ saves: [] });
   });
 
+  it("round-trips every permanent inventory profile field", async () => {
+    const profile = createDefaultProfile();
+    profile.interface.permanentInventoryPosition = "below";
+    profile.interface.permanentInventoryWidth = "wide";
+    profile.interface.permanentInventoryCollapsed = true;
+    profile.nethack.permInvent = true;
+    profile.nethack.perminvMode = "in-use";
+
+    const json = await serializeBackup(
+      profile,
+      [],
+      "prealpha-3",
+      "development",
+      exportedAt,
+    );
+
+    await expect(parseBackupImport(new TextEncoder().encode(json)))
+      .resolves.toMatchObject({ profile });
+  });
+
+  it("rejects a schema 1 backup containing the old profile shape", async () => {
+    const document = await exportedDocument();
+    delete document.profile.interface.permanentInventoryPosition;
+    delete document.profile.interface.permanentInventoryWidth;
+    delete document.profile.interface.permanentInventoryCollapsed;
+    delete document.profile.nethack.permInvent;
+    delete document.profile.nethack.perminvMode;
+
+    await expect(parseDocument(document)).rejects.toMatchObject({
+      code: "invalid-backup",
+    });
+  });
+
   it("preserves a zero-byte formal file for damaged-save rescue", async () => {
     const json = await serializeBackup(
       createDefaultProfile(),

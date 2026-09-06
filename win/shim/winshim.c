@@ -1,10 +1,10 @@
 /* NetHack 5.0 winshim.c    $NHDT-Date: 1781973099 2026/06/20 16:31:39 $  $NHDT-Branch: NetHack-5.0 $:$NHDT-Revision: 1.34 $ */
 /* Copyright (c) Adam Powers, 2020                                */
 /* NetHack may be freely redistributed.  See license for details. */
-/* Modified for BlissHack by lightmain, 2026-09-02 and 2026-09-06:
+/* Modified for BlissHack by lightmain, 2026-09-02, 2026-09-06, and 2026-09-07:
  * preserve character selection quit semantics, expose narrow browser save
  * helpers, and synchronize a fixed set of in-game options at command
- * boundaries. */
+ * boundaries, including the permanent inventory capability and settings. */
 
 /* not an actual windowing port, but a fake win port for libnethack */
 
@@ -175,7 +175,7 @@ VDECLCB(shim_init_nhwindows,(int *argcp, char **argv), "vpp", P2V argcp, P2V arg
 DECLCB(boolean, shim_player_selection_or_tty,(void), "b")
 VDECLCB(shim_askname,(void), "v")
 #ifdef __EMSCRIPTEN__
-#define SHIM_SETTINGS_VERSION 1U
+#define SHIM_SETTINGS_VERSION 2U
 #define SHIM_SETTINGS_PENDING (1U << 0)
 #define SHIM_SETTINGS_AUTOPICKUP (1U << 1)
 #define SHIM_SETTINGS_SAFE_PET (1U << 2)
@@ -187,6 +187,10 @@ VDECLCB(shim_askname,(void), "v")
 #define SHIM_SETTINGS_NUMPAD_MASK (7U << SHIM_SETTINGS_NUMPAD_SHIFT)
 #define SHIM_SETTINGS_PICKUP_SHIFT 10
 #define SHIM_SETTINGS_PICKUP_MASK (0x7fffU << SHIM_SETTINGS_PICKUP_SHIFT)
+#define SHIM_SETTINGS_PERM_INVENT (1U << 25)
+#define SHIM_SETTINGS_PERMINV_MODE_SHIFT 26
+#define SHIM_SETTINGS_PERMINV_MODE_MASK \
+    (3U << SHIM_SETTINGS_PERMINV_MODE_SHIFT)
 #define SHIM_SETTINGS_VERSION_SHIFT 28
 #define SHIM_SETTINGS_VERSION_MASK (7U << SHIM_SETTINGS_VERSION_SHIFT)
 #define SHIM_SETTINGS_DEFINED_MASK \
@@ -194,12 +198,13 @@ VDECLCB(shim_askname,(void), "v")
      | SHIM_SETTINGS_SAFE_PET | SHIM_SETTINGS_SORTPACK \
      | SHIM_SETTINGS_SHOWEXP | SHIM_SETTINGS_TIME \
      | SHIM_SETTINGS_PICKUP_ALL | SHIM_SETTINGS_NUMPAD_MASK \
-     | SHIM_SETTINGS_PICKUP_MASK | SHIM_SETTINGS_VERSION_MASK)
+     | SHIM_SETTINGS_PICKUP_MASK | SHIM_SETTINGS_PERM_INVENT \
+     | SHIM_SETTINGS_PERMINV_MODE_MASK | SHIM_SETTINGS_VERSION_MASK)
 
 static const char shim_pickup_symbols[] = "$\")[%?+!=/(*`0_";
 static const int shim_numpad_modes[] = { 0, 1, 2, 3, 4, -1 };
 
-/* Encode the seven supported live options in the versioned WASM payload. */
+/* Encode the nine supported live options in the versioned WASM payload. */
 static unsigned int
 shim_settings_snapshot(void)
 {
@@ -218,6 +223,25 @@ shim_settings_snapshot(void)
         payload |= SHIM_SETTINGS_SHOWEXP;
     if (flags.time)
         payload |= SHIM_SETTINGS_TIME;
+    if (iflags.perm_invent)
+        payload |= SHIM_SETTINGS_PERM_INVENT;
+    switch (iflags.perminv_mode) {
+    case InvOptFull:
+    case InvOptFull_grid:
+        mode = 2;
+        break;
+    case InvOptInUse:
+        mode = 3;
+        break;
+    case InvOptOn:
+    case InvOptOn_grid:
+        mode = 1;
+        break;
+    default:
+        mode = 0;
+        break;
+    }
+    payload |= (unsigned int) mode << SHIM_SETTINGS_PERMINV_MODE_SHIFT;
 
     value = get_option_value("pickup_types", TRUE);
     if (value && !strcmp(value, "all")) {
@@ -228,6 +252,7 @@ shim_settings_snapshot(void)
                 payload |= 1U << (SHIM_SETTINGS_PICKUP_SHIFT + i);
     }
 
+    mode = 0;
     value = get_option_value("number_pad", TRUE);
     if (value) {
         mode = atoi(value);
@@ -244,7 +269,7 @@ shim_settings_snapshot(void)
 static boolean
 shim_settings_payload_valid(unsigned int payload, boolean require_pending)
 {
-    unsigned int version, numpad, pickup;
+    unsigned int version, numpad, pickup, perminv_mode;
 
     if (payload & ~SHIM_SETTINGS_DEFINED_MASK)
         return FALSE;
@@ -264,6 +289,12 @@ shim_settings_payload_valid(unsigned int payload, boolean require_pending)
         return FALSE;
     if (!(payload & SHIM_SETTINGS_PICKUP_ALL) && !pickup)
         return FALSE;
+    perminv_mode = (payload & SHIM_SETTINGS_PERMINV_MODE_MASK)
+                   >> SHIM_SETTINGS_PERMINV_MODE_SHIFT;
+    if ((payload & SHIM_SETTINGS_PERM_INVENT) && !perminv_mode)
+        return FALSE;
+    if (require_pending && !perminv_mode)
+        return FALSE;
     return TRUE;
 }
 
@@ -273,11 +304,13 @@ shim_apply_settings(unsigned int payload)
 {
     char opts[BUFSZ], *op;
     unsigned int pickup;
-    int i, numpad;
+    int i, numpad, perminv_mode;
     boolean applied = TRUE, old_opt_initial = go.opt_initial,
             old_opt_from_file = go.opt_from_file,
             old_sortpack = flags.sortpack,
-            old_showexp = flags.showexp, old_time = flags.time;
+            old_showexp = flags.showexp, old_time = flags.time,
+            old_perm_invent = iflags.perm_invent;
+    uchar old_perminv_mode = iflags.perminv_mode;
 
 #define SHIM_APPLY_BOOLEAN(name, bit) \
     Sprintf(opts, "%s" name, (payload & (bit)) ? "" : "!"); \
@@ -318,6 +351,16 @@ shim_apply_settings(unsigned int payload)
     SHIM_APPLY_BOOLEAN("sortpack", SHIM_SETTINGS_SORTPACK);
     SHIM_APPLY_BOOLEAN("showexp", SHIM_SETTINGS_SHOWEXP);
     SHIM_APPLY_BOOLEAN("time", SHIM_SETTINGS_TIME);
+    perminv_mode = (payload & SHIM_SETTINGS_PERMINV_MODE_MASK)
+                   >> SHIM_SETTINGS_PERMINV_MODE_SHIFT;
+    Sprintf(opts, "perminv_mode:%s",
+            perminv_mode == 2 ? "full"
+            : perminv_mode == 3 ? "in-use" : "all");
+    if (!parseoptions(opts, TRUE, FALSE)) {
+        applied = FALSE;
+        goto shim_apply_done;
+    }
+    SHIM_APPLY_BOOLEAN("perm_invent", SHIM_SETTINGS_PERM_INVENT);
 shim_apply_done:
 #undef SHIM_APPLY_BOOLEAN
     go.opt_initial = old_opt_initial;
@@ -329,6 +372,14 @@ shim_apply_done:
     }
     if (applied && flags.sortpack != old_sortpack)
         update_inventory();
+    if (applied
+        && (iflags.perm_invent != old_perm_invent
+            || iflags.perminv_mode != old_perminv_mode)) {
+        if (old_perm_invent)
+            perm_invent_toggled(TRUE);
+        if (iflags.perm_invent)
+            perm_invent_toggled(FALSE);
+    }
     return applied;
 }
 
@@ -503,7 +554,8 @@ struct window_procs shim_procs = {
     (0
      | WC_ASCII_MAP
      | WC_MOUSE_SUPPORT
-     | WC_COLOR | WC_HILITE_PET | WC_INVERSE | WC_EIGHT_BIT_IN),
+     | WC_COLOR | WC_HILITE_PET | WC_INVERSE | WC_EIGHT_BIT_IN
+     | WC_PERM_INVENT),
     (0
 #if defined(SELECTSAVED)
      | WC2_SELECTSAVED

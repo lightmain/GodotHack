@@ -9,8 +9,23 @@ export type TerminalFontSize = (typeof TERMINAL_FONT_SIZES)[number];
 export const MESSAGE_HISTORY_LINES = [3, 5] as const;
 export type MessageHistoryLines = (typeof MESSAGE_HISTORY_LINES)[number];
 
+export const PERMANENT_INVENTORY_POSITIONS = ["right", "below"] as const;
+export type PermanentInventoryPosition =
+  (typeof PERMANENT_INVENTORY_POSITIONS)[number];
+
+export const PERMANENT_INVENTORY_WIDTHS = [
+  "compact",
+  "standard",
+  "wide",
+] as const;
+export type PermanentInventoryWidth =
+  (typeof PERMANENT_INVENTORY_WIDTHS)[number];
+
 export const NUMBER_PAD_MODES = [0, 1, 2, 3, 4, -1] as const;
 export type NumberPadMode = (typeof NUMBER_PAD_MODES)[number];
+
+export const PERMINV_MODES = ["all", "full", "in-use"] as const;
+export type PerminvMode = (typeof PERMINV_MODES)[number];
 
 /**
  * Pickable object class symbols in NetHack's default inventory order.
@@ -39,6 +54,9 @@ export interface InterfaceSettingsV1 {
   terminalFontSize: TerminalFontSize;
   messageHistoryLines: MessageHistoryLines;
   followPlayer: boolean;
+  permanentInventoryPosition: PermanentInventoryPosition;
+  permanentInventoryWidth: PermanentInventoryWidth;
+  permanentInventoryCollapsed: boolean;
 }
 
 export type PickupTypesV1 =
@@ -54,6 +72,8 @@ export interface NetHackSettingsV1 {
   sortpack: boolean;
   showExperience: boolean;
   showTime: boolean;
+  permInvent: boolean;
+  perminvMode: PerminvMode;
 }
 
 export interface BlissHackProfileV1 {
@@ -93,6 +113,9 @@ export function createDefaultProfile(): BlissHackProfileV1 {
       terminalFontSize: "medium",
       messageHistoryLines: 5,
       followPlayer: true,
+      permanentInventoryPosition: "right",
+      permanentInventoryWidth: "standard",
+      permanentInventoryCollapsed: false,
     },
     nethack: {
       tutorial: true,
@@ -103,6 +126,8 @@ export function createDefaultProfile(): BlissHackProfileV1 {
       sortpack: true,
       showExperience: false,
       showTime: false,
+      permInvent: false,
+      perminvMode: "all",
     },
   };
 }
@@ -236,7 +261,14 @@ export function validateInterfaceSettings(
   const settings = requireRecord(value, "interface");
   assertExactKeys(
     settings,
-    ["terminalFontSize", "messageHistoryLines", "followPlayer"],
+    [
+      "terminalFontSize",
+      "messageHistoryLines",
+      "followPlayer",
+      "permanentInventoryPosition",
+      "permanentInventoryWidth",
+      "permanentInventoryCollapsed",
+    ],
     "interface",
   );
   if (!isOneOf(settings.terminalFontSize, TERMINAL_FONT_SIZES)) {
@@ -246,11 +278,30 @@ export function validateInterfaceSettings(
     throw invalidProfile("interface.messageHistoryLines is invalid");
   }
   assertBoolean(settings.followPlayer, "interface.followPlayer");
+  if (!isOneOf(
+    settings.permanentInventoryPosition,
+    PERMANENT_INVENTORY_POSITIONS,
+  )) {
+    throw invalidProfile("interface.permanentInventoryPosition is invalid");
+  }
+  if (!isOneOf(
+    settings.permanentInventoryWidth,
+    PERMANENT_INVENTORY_WIDTHS,
+  )) {
+    throw invalidProfile("interface.permanentInventoryWidth is invalid");
+  }
+  assertBoolean(
+    settings.permanentInventoryCollapsed,
+    "interface.permanentInventoryCollapsed",
+  );
 
   return {
     terminalFontSize: settings.terminalFontSize,
     messageHistoryLines: settings.messageHistoryLines,
     followPlayer: settings.followPlayer,
+    permanentInventoryPosition: settings.permanentInventoryPosition,
+    permanentInventoryWidth: settings.permanentInventoryWidth,
+    permanentInventoryCollapsed: settings.permanentInventoryCollapsed,
   };
 }
 
@@ -270,6 +321,8 @@ export function validateNetHackSettings(
       "sortpack",
       "showExperience",
       "showTime",
+      "permInvent",
+      "perminvMode",
     ],
     "nethack",
   );
@@ -282,6 +335,10 @@ export function validateNetHackSettings(
   assertBoolean(settings.sortpack, "nethack.sortpack");
   assertBoolean(settings.showExperience, "nethack.showExperience");
   assertBoolean(settings.showTime, "nethack.showTime");
+  assertBoolean(settings.permInvent, "nethack.permInvent");
+  if (!isOneOf(settings.perminvMode, PERMINV_MODES)) {
+    throw invalidProfile("nethack.perminvMode is invalid");
+  }
 
   return {
     tutorial: settings.tutorial,
@@ -292,6 +349,8 @@ export function validateNetHackSettings(
     sortpack: settings.sortpack,
     showExperience: settings.showExperience,
     showTime: settings.showTime,
+    permInvent: settings.permInvent,
+    perminvMode: settings.perminvMode,
   };
 }
 

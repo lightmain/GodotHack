@@ -7,7 +7,7 @@ import {
 
 export type RuntimeNetHackSettings = Omit<NetHackSettingsV1, "tutorial">;
 
-const PROTOCOL_VERSION = 1;
+const PROTOCOL_VERSION = 2;
 const PENDING_BIT = 1 << 0;
 const AUTOPICKUP_BIT = 1 << 1;
 const SAFE_PET_BIT = 1 << 2;
@@ -19,6 +19,9 @@ const NUMBER_PAD_SHIFT = 7;
 const NUMBER_PAD_MASK = 0b111 << NUMBER_PAD_SHIFT;
 const PICKUP_SHIFT = 10;
 const PICKUP_MASK = 0x7fff << PICKUP_SHIFT;
+const PERM_INVENT_BIT = 1 << 25;
+const PERMINV_MODE_SHIFT = 26;
+const PERMINV_MODE_MASK = 0b11 << PERMINV_MODE_SHIFT;
 const VERSION_SHIFT = 28;
 const VERSION_MASK = 0b111 << VERSION_SHIFT;
 const DEFINED_MASK = (
@@ -31,6 +34,8 @@ const DEFINED_MASK = (
   | PICKUP_ALL_BIT
   | NUMBER_PAD_MASK
   | PICKUP_MASK
+  | PERM_INVENT_BIT
+  | PERMINV_MODE_MASK
   | VERSION_MASK
 ) >>> 0;
 
@@ -43,6 +48,9 @@ export function encodeRuntimeSettings(
     ? runtimeSettingsFromProfile(settings)
     : validateRuntimeSettings(settings);
   const numberPadCode = NUMBER_PAD_MODES.indexOf(normalized.numberPad);
+  const perminvModeCode = normalized.perminvMode === "all"
+    ? 1
+    : normalized.perminvMode === "full" ? 2 : 3;
   let payload = (PROTOCOL_VERSION << VERSION_SHIFT)
     | (pending ? PENDING_BIT : 0)
     | (normalized.autopickup ? AUTOPICKUP_BIT : 0)
@@ -51,7 +59,9 @@ export function encodeRuntimeSettings(
     | (normalized.showExperience ? SHOW_EXPERIENCE_BIT : 0)
     | (normalized.showTime ? SHOW_TIME_BIT : 0)
     | (normalized.pickupTypes.mode === "all" ? PICKUP_ALL_BIT : 0)
-    | (numberPadCode << NUMBER_PAD_SHIFT);
+    | (numberPadCode << NUMBER_PAD_SHIFT)
+    | (normalized.permInvent ? PERM_INVENT_BIT : 0)
+    | (perminvModeCode << PERMINV_MODE_SHIFT);
 
   if (normalized.pickupTypes.mode === "selected") {
     normalized.pickupTypes.classes.forEach((symbol) => {
@@ -96,6 +106,17 @@ export function decodeRuntimeSettings(payload: number): {
   if (!pickupAll && classes.length === 0) {
     throw new Error("Runtime settings pickup selection is empty");
   }
+  const perminvModeCode = (
+    unsigned & PERMINV_MODE_MASK
+  ) >>> PERMINV_MODE_SHIFT;
+  const perminvMode = perminvModeCode === 2
+    ? "full"
+    : perminvModeCode === 3 ? "in-use" : "all";
+  if (perminvModeCode === 0 && (unsigned & PERM_INVENT_BIT) !== 0) {
+    throw new Error("Runtime settings permanent inventory mode is invalid");
+  }
+  const permInvent = perminvModeCode !== 0
+    && (unsigned & PERM_INVENT_BIT) !== 0;
 
   return {
     pending: (unsigned & PENDING_BIT) !== 0,
@@ -109,6 +130,8 @@ export function decodeRuntimeSettings(payload: number): {
       sortpack: (unsigned & SORTPACK_BIT) !== 0,
       showExperience: (unsigned & SHOW_EXPERIENCE_BIT) !== 0,
       showTime: (unsigned & SHOW_TIME_BIT) !== 0,
+      permInvent,
+      perminvMode,
     },
   };
 }
@@ -126,6 +149,8 @@ export function runtimeSettingsFromProfile(
     sortpack: normalized.sortpack,
     showExperience: normalized.showExperience,
     showTime: normalized.showTime,
+    permInvent: normalized.permInvent,
+    perminvMode: normalized.perminvMode,
   };
 }
 

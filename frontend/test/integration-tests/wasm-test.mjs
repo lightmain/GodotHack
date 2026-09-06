@@ -53,12 +53,14 @@ const windowMessages = [];
 const inputStates = [];
 const runtimeSettingsSnapshots = [];
 const runtimeSettingsResults = [];
+const permanentInventoryUpdates = [];
 let queuedRuntimeSettings = 0;
 
-const RUNTIME_SETTINGS_VERSION = 1 << 28;
+const RUNTIME_SETTINGS_VERSION = 2 << 28;
 const RUNTIME_SETTINGS_PENDING = 1 << 0;
 const RUNTIME_SETTINGS_AUTOPICKUP = 1 << 1;
 const RUNTIME_SETTINGS_PICKUP_ALL = 1 << 6;
+const RUNTIME_SETTINGS_PERMINV_ALL = 1 << 26;
 
 /**
  * Wait until the core reaches another keyboard-facing callback.
@@ -170,7 +172,32 @@ async function blissCallback(name, ...args) {
         pendingInput = resolve;
       });
 
+    case "shim_start_menu":
+      if ((args[1] & 1) !== 0) {
+        permanentInventoryUpdates.push({ kind: "start", windowId: args[0] });
+      }
+      return undefined;
+
+    case "shim_add_menu":
+      if (permanentInventoryUpdates.some(
+        (event) => event.kind === "start" && event.windowId === args[0],
+      )) {
+        permanentInventoryUpdates.push({
+          kind: "item",
+          windowId: args[0],
+          text: String(args[7] ?? ""),
+        });
+      }
+      return undefined;
+
     case "shim_select_menu":
+      if (args[1] === 0) {
+        permanentInventoryUpdates.push({
+          kind: "commit",
+          windowId: args[0],
+        });
+        return 0;
+      }
       return -1; // cancel/dismiss
     case "shim_message_menu":
     case "shim_doprev_message":
@@ -236,6 +263,8 @@ async function run() {
     "OPTIONS=sortpack",
     "OPTIONS=showexp",
     "OPTIONS=time",
+    "OPTIONS=perminv_mode:all",
+    "OPTIONS=perm_invent",
     "OPTIONS=!tutorial",
     "",
   ].join("\n");
@@ -336,6 +365,12 @@ async function run() {
     globalThis.nethackGlobal?.globals?.flags?.time === true,
     "time from runtime .nethackrc reached NetHack globals",
   );
+  assert(
+    permanentInventoryUpdates.some((event) => event.kind === "start")
+      && permanentInventoryUpdates.some((event) => event.kind === "item")
+      && permanentInventoryUpdates.some((event) => event.kind === "commit"),
+    "perm_invent creates, populates, and commits a persistent inventory menu",
+  );
 
   // --- Input handling ---
   console.log("\n--- Input handling ---");
@@ -361,7 +396,8 @@ async function run() {
     RUNTIME_SETTINGS_VERSION
     | RUNTIME_SETTINGS_PENDING
     | RUNTIME_SETTINGS_PICKUP_ALL
-    | (1 << 25)
+    | RUNTIME_SETTINGS_PERMINV_ALL
+    | (1 << 31)
   ) >>> 0;
   const resultsBeforeInvalidUpdate = runtimeSettingsResults.length;
   await sendKeyAndWait(32);
@@ -380,6 +416,7 @@ async function run() {
     | RUNTIME_SETTINGS_PENDING
     | RUNTIME_SETTINGS_AUTOPICKUP
     | RUNTIME_SETTINGS_PICKUP_ALL
+    | RUNTIME_SETTINGS_PERMINV_ALL
   ) >>> 0;
   const appliedSettings = (
     dynamicSettings & ~RUNTIME_SETTINGS_PENDING

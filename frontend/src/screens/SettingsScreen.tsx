@@ -354,6 +354,41 @@ export function SettingsScreen({
                 updateInterface(setDraft, { followPlayer });
               }}
             />
+            <SegmentedField
+              label="Inventory position"
+              name="inventory-position"
+              onChange={(permanentInventoryPosition) => {
+                updateInterface(setDraft, { permanentInventoryPosition });
+              }}
+              options={[
+                { value: "right", label: "Right" },
+                { value: "below", label: "Below" },
+              ]}
+              value={draft.interface.permanentInventoryPosition}
+            />
+            <label className="settings-field settings-select">
+              <span>Inventory width</span>
+              <select
+                onChange={(event) => {
+                  updateInterface(setDraft, {
+                    permanentInventoryWidth: event.currentTarget.value as
+                      InterfaceSettingsV1["permanentInventoryWidth"],
+                  });
+                }}
+                value={draft.interface.permanentInventoryWidth}
+              >
+                <option value="compact">Compact</option>
+                <option value="standard">Standard</option>
+                <option value="wide">Wide</option>
+              </select>
+            </label>
+            <ToggleField
+              checked={draft.interface.permanentInventoryCollapsed}
+              label="Start inventory collapsed"
+              onChange={(permanentInventoryCollapsed) => {
+                updateInterface(setDraft, { permanentInventoryCollapsed });
+              }}
+            />
           </div>
         </section>
 
@@ -478,7 +513,30 @@ export function SettingsScreen({
                 label="Show turn count"
                 onChange={(showTime) => updateNetHack(setDraft, { showTime })}
               />
+              <ToggleField
+                checked={draft.nethack.permInvent}
+                label="Permanent inventory"
+                onChange={(permInvent) => {
+                  updateNetHack(setDraft, { permInvent });
+                }}
+              />
             </div>
+            <label className="settings-field settings-select">
+              <span>Inventory contents</span>
+              <select
+                onChange={(event) => {
+                  updateNetHack(setDraft, {
+                    perminvMode: event.currentTarget.value as
+                      NetHackSettingsV1["perminvMode"],
+                  });
+                }}
+                value={draft.nethack.perminvMode}
+              >
+                <option value="all">All except gold</option>
+                <option value="full">Full including gold</option>
+                <option value="in-use">Items in use</option>
+              </select>
+            </label>
           </div>
         </section>
 

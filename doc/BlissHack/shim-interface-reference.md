@@ -22,9 +22,9 @@
 > 7. 数量型 `yn_function` 要求窗口端口写全局 `yn_number` 后返回 `'#'`，
 >    但当前 `js_globals_init()` 没有向 JavaScript 暴露该变量。因此当前
 >    TypeScript 接口不能可靠实现数量回答，不能用猜测地址绕过。
-> 8. 当前 `shim_procs.wincap` 没有声明 `WC_PERM_INVENT`，且 Emscripten
->    版本的 `shim_ctrl_nhwindow()` 恒返回 `NULL`。因此虽然菜单协议能表达
->    `MENU_BEHAVE_PERMINV`，当前 WASM 窗口端口并未完整支持永久背包。
+> 8. BlissHack 的 `shim_procs.wincap` 已声明 `WC_PERM_INVENT`。
+>    Emscripten 版本的 `shim_ctrl_nhwindow()` 仍恒返回 `NULL`，所以永久背包
+>    只使用核心默认非 tty 行为，侧栏布局由 React 管理。
 > 9. `shim_doprev_message`、`shim_get_ext_cmd`、`shim_get_color_string`
 >     分别使用 `"iv"`、`"iv"`、`"sv"`。尾部 `v` 会被桥接层解析成一个
 >     `undefined` 占位参数；消费者应忽略它。
@@ -94,6 +94,7 @@ TypeScript 侧实现渲染和输入逻辑。
 - `WC_HILITE_PET` — 支持宠物高亮
 - `WC_INVERSE` — 支持反色显示
 - `WC_EIGHT_BIT_IN` — 支持 8 位字符输入
+- `WC_PERM_INVENT` — 支持核心驱动的永久背包菜单
 
 **wincap2（第二组能力）：**
 - `WC2_SELECTSAVED` — 支持存档选择菜单
@@ -106,9 +107,8 @@ TypeScript 侧实现渲染和输入逻辑。
   历史；它不控制 `--More--`
 - `WC2_STATUSLINES` — 支持切换 2/3 行状态显示
 
-当前 `wincap` **没有** `WC_PERM_INVENT`。核心的
-`can_set_perm_invent()` 因此会拒绝启用永久背包；仅仅能接收
-`MENU_BEHAVE_PERMINV` 并不等于窗口端口已经支持该能力。
+永久背包能力只承诺接收核心通过 `MENU_BEHAVE_PERMINV` 发送的完整菜单更新。
+窗口端不向核心提供 tty 的行列数、滚动或网格模式信息。
 
 ### 1.5 libnethack.a 与 nethack.js 的公开 API
 
@@ -447,8 +447,8 @@ shim_ctrl_nhwindow(winid window UNUSED, int request UNUSED, win_request_info *wr
 
 这会使 `set_mode`、`request_settings` 和 `set_menu_promptstyle` 请求均得不到
 窗口端响应。对永久背包而言，核心无法取得 `maxslot`、可用行列数和
-`prohibited` 等设置，所以不能只添加 `WC_PERM_INVENT` 能力位就认为功能
-完整。
+`prohibited` 等设置。BlissHack 的永久背包使用核心默认的非 tty 模式，不依赖
+这些可选布局信息；侧栏大小和位置完全由 React 界面配置管理。
 
 ---
 
@@ -1170,9 +1170,16 @@ void shim_update_inventory(int a1 UNUSED) {
 `doc/window.txt` 还规定非零参数用于提示并执行永久背包滚动操作，当前
 WASM shim 没有实现该分支。
 
-更关键的是，当前 `shim_procs` 没有声明 `WC_PERM_INVENT`，并且
-`shim_ctrl_nhwindow()` 无法返回窗口设置，因此正常选项流程会拒绝开启
-永久背包。现有代码只能视为不完整的预留实现。
+BlissHack 从 2026-09-07 起在 `shim_procs.wincap` 声明
+`WC_PERM_INVENT`。核心因此可以创建 `NHW_PERMINVENT` 窗口，并通过
+`MENU_BEHAVE_PERMINV` 的 `PICK_NONE` 菜单更新发送完整快照。前端在
+`select_menu()` 到达时原子替换侧栏数据；普通 `PICK_NONE`、`PICK_ONE` 和
+`PICK_ANY` 菜单仍使用 modal。
+
+运行时 Settings 协议版本 2 另外携带 `perm_invent` 和 `perminv_mode`。更新仍
+只在 `shim_get_nh_event()` 的安全命令边界通过 `parseoptions()` 应用。模式或
+开关变化后，shim 在当前 C 调用栈中调用 `perm_invent_toggled()`，不会让 React
+通过额外 `ccall()` 重入 Asyncify。
 
 ---
 

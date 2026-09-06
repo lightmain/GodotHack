@@ -61,6 +61,7 @@ import {
   submitMenuSelection,
 } from "../nethack-bridge";
 import { SettingsScreen } from "./SettingsScreen";
+import { PermanentInventoryPanel } from "./PermanentInventoryPanel";
 
 const COLOR_NAMES = [
   "black",
@@ -224,6 +225,19 @@ export function GameScreen({
     return saved;
   }
 
+  /** Persist the panel collapse preference without entering the WASM runtime. */
+  function setInventoryCollapsed(collapsed: boolean): void {
+    void onApplyProfile(validateProfile({
+      ...profile,
+      interface: {
+        ...profile.interface,
+        permanentInventoryCollapsed: collapsed,
+      },
+    })).catch(() => {
+      // Keep the current profile when browser persistence rejects the update.
+    });
+  }
+
   return (
     <main
       className={`nh-shell nh-font-${settings.terminalFontSize}`}
@@ -249,14 +263,30 @@ export function GameScreen({
             historyLines={settings.messageHistoryLines}
             messages={snapshot.messages}
           />
-          <MapGrid
-            clipCenter={snapshot.clipCenter}
-            cursor={snapshot.cursor}
-            followPlayer={settings.followPlayer}
-            layoutKey={`${settings.terminalFontSize}:${settings.messageHistoryLines}`}
-            map={snapshot.map}
-          />
-          <StatusArea status={snapshot.status} />
+          <div
+            className={`nh-playfield nh-playfield-${settings.permanentInventoryPosition}`}
+          >
+            <div className="nh-playfield-main">
+              <MapGrid
+                clipCenter={snapshot.clipCenter}
+                cursor={snapshot.cursor}
+                followPlayer={settings.followPlayer}
+                layoutKey={`${settings.terminalFontSize}:${settings.messageHistoryLines}`}
+                map={snapshot.map}
+              />
+              <StatusArea status={snapshot.status} />
+            </div>
+            {gameProfile.nethack.permInvent
+              && snapshot.permanentInventory && (
+              <PermanentInventoryPanel
+                collapsed={settings.permanentInventoryCollapsed}
+                inventory={snapshot.permanentInventory}
+                onCollapsedChange={setInventoryCollapsed}
+                position={settings.permanentInventoryPosition}
+                width={settings.permanentInventoryWidth}
+              />
+            )}
+          </div>
           <InputArea request={snapshot.inputRequest} />
         </section>
       )}

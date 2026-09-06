@@ -40,6 +40,24 @@ const PROFILE_FIELDS: readonly FieldDefinition[] = [
     format: BOOLEAN,
   },
   {
+    path: "interface.permanentInventoryPosition",
+    label: "Inventory position",
+    value: (profile) => profile.interface.permanentInventoryPosition,
+    format: TEXT,
+  },
+  {
+    path: "interface.permanentInventoryWidth",
+    label: "Inventory width",
+    value: (profile) => profile.interface.permanentInventoryWidth,
+    format: TEXT,
+  },
+  {
+    path: "interface.permanentInventoryCollapsed",
+    label: "Start inventory collapsed",
+    value: (profile) => profile.interface.permanentInventoryCollapsed,
+    format: BOOLEAN,
+  },
+  {
     path: "nethack.tutorial",
     label: "Offer tutorial",
     value: (profile) => profile.nethack.tutorial,
@@ -86,6 +104,18 @@ const PROFILE_FIELDS: readonly FieldDefinition[] = [
     label: "Show turn count",
     value: (profile) => profile.nethack.showTime,
     format: BOOLEAN,
+  },
+  {
+    path: "nethack.permInvent",
+    label: "Permanent inventory",
+    value: (profile) => profile.nethack.permInvent,
+    format: BOOLEAN,
+  },
+  {
+    path: "nethack.perminvMode",
+    label: "Inventory contents",
+    value: (profile) => profile.nethack.perminvMode,
+    format: TEXT,
   },
 ];
 

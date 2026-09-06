@@ -58,6 +58,8 @@ describe("runtime NetHack rc installation", () => {
       "OPTIONS=sortpack",
       "OPTIONS=!showexp",
       "OPTIONS=time",
+      "OPTIONS=perminv_mode:all",
+      "OPTIONS=!perm_invent",
       "OPTIONS=!tutorial",
       "",
     ].join("\n"));

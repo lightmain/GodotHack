@@ -18,6 +18,8 @@ describe("NetHack rc generation", () => {
       "OPTIONS=sortpack",
       "OPTIONS=!showexp",
       "OPTIONS=!time",
+      "OPTIONS=perminv_mode:all",
+      "OPTIONS=!perm_invent",
       "",
     ].join("\n"));
     expect(rc).not.toContain("\r");
@@ -52,6 +54,8 @@ describe("NetHack rc generation", () => {
       "OPTIONS=!sortpack",
       "OPTIONS=!showexp",
       "OPTIONS=!time",
+      "OPTIONS=perminv_mode:all",
+      "OPTIONS=!perm_invent",
       "OPTIONS=!tutorial",
       "",
     ]);
@@ -89,7 +93,7 @@ describe("NetHack rc generation", () => {
     expect(rc).toContain(
       `OPTIONS=pickup_types:${PICKUP_CLASS_SYMBOLS.join("")}\n`,
     );
-    expect(rc.split("\n").filter(Boolean)).toHaveLength(7);
+    expect(rc.split("\n").filter(Boolean)).toHaveLength(9);
     for (const line of rc.split("\n").filter(Boolean)) {
       expect(line).toMatch(/^OPTIONS=[!a-z_].*$/);
     }
@@ -104,5 +108,32 @@ describe("NetHack rc generation", () => {
 
     expect(() => generateNetHackRc(settings as never))
       .toThrow(/numberPad/);
+  });
+
+  it.each(["all", "full", "in-use"] as const)(
+    "writes perminv_mode %s immediately before the final enabled switch",
+    (perminvMode) => {
+      const settings = createDefaultProfile().nethack;
+      settings.permInvent = true;
+      settings.perminvMode = perminvMode;
+
+      expect(generateNetHackRc(settings).split("\n").slice(-3)).toEqual([
+        `OPTIONS=perminv_mode:${perminvMode}`,
+        "OPTIONS=perm_invent",
+        "",
+      ]);
+    },
+  );
+
+  it("writes the selected mode before a disabled final switch", () => {
+    const settings = createDefaultProfile().nethack;
+    settings.permInvent = false;
+    settings.perminvMode = "full";
+
+    expect(generateNetHackRc(settings).split("\n").slice(-3)).toEqual([
+      "OPTIONS=perminv_mode:full",
+      "OPTIONS=!perm_invent",
+      "",
+    ]);
   });
 });

@@ -41,6 +41,9 @@ describe("profile defaults and validation", () => {
         terminalFontSize: "medium",
         messageHistoryLines: 5,
         followPlayer: true,
+        permanentInventoryPosition: "right",
+        permanentInventoryWidth: "standard",
+        permanentInventoryCollapsed: false,
       },
       nethack: {
         tutorial: true,
@@ -51,6 +54,8 @@ describe("profile defaults and validation", () => {
         sortpack: true,
         showExperience: false,
         showTime: false,
+        permInvent: false,
+        perminvMode: "all",
       },
     });
     first.interface.terminalFontSize = "large";
@@ -89,6 +94,40 @@ describe("profile defaults and validation", () => {
     },
   );
 
+  it.each([
+    ["right", "compact", true],
+    ["below", "standard", false],
+    ["right", "wide", false],
+  ] as const)(
+    "accepts permanent inventory layout %s/%s with collapsed=%s",
+    (permanentInventoryPosition, permanentInventoryWidth, permanentInventoryCollapsed) => {
+      const profile = createDefaultProfile();
+      profile.interface.permanentInventoryPosition = permanentInventoryPosition;
+      profile.interface.permanentInventoryWidth = permanentInventoryWidth;
+      profile.interface.permanentInventoryCollapsed = permanentInventoryCollapsed;
+
+      expect(validateProfile(profile).interface).toMatchObject({
+        permanentInventoryPosition,
+        permanentInventoryWidth,
+        permanentInventoryCollapsed,
+      });
+    },
+  );
+
+  it.each(["all", "full", "in-use"] as const)(
+    "accepts permanent inventory mode %s",
+    (perminvMode) => {
+      const profile = createDefaultProfile();
+      profile.nethack.permInvent = true;
+      profile.nethack.perminvMode = perminvMode;
+
+      expect(validateProfile(profile).nethack).toMatchObject({
+        permInvent: true,
+        perminvMode,
+      });
+    },
+  );
+
   it("canonicalizes selected pickup classes into inventory order", () => {
     const profile = createDefaultProfile();
     profile.nethack.pickupTypes = {
@@ -117,6 +156,21 @@ describe("profile defaults and validation", () => {
     }],
     ["invalid number_pad mode", (profile: Record<string, unknown>) => {
       (profile.nethack as Record<string, unknown>).numberPad = 5;
+    }],
+    ["invalid inventory position", (profile: Record<string, unknown>) => {
+      (profile.interface as Record<string, unknown>).permanentInventoryPosition = "left";
+    }],
+    ["invalid inventory width", (profile: Record<string, unknown>) => {
+      (profile.interface as Record<string, unknown>).permanentInventoryWidth = "fluid";
+    }],
+    ["invalid collapsed type", (profile: Record<string, unknown>) => {
+      (profile.interface as Record<string, unknown>).permanentInventoryCollapsed = "no";
+    }],
+    ["invalid permanent inventory toggle", (profile: Record<string, unknown>) => {
+      (profile.nethack as Record<string, unknown>).permInvent = 1;
+    }],
+    ["invalid permanent inventory mode", (profile: Record<string, unknown>) => {
+      (profile.nethack as Record<string, unknown>).perminvMode = "gold";
     }],
     ["empty selected pickup classes", (profile: Record<string, unknown>) => {
       (profile.nethack as Record<string, unknown>).pickupTypes = {
@@ -149,6 +203,20 @@ describe("profile defaults and validation", () => {
       ...createDefaultProfile(),
       schemaVersion: 2,
     })), "unsupported-schema");
+  });
+
+  it("strictly rejects the pre-permanent-inventory schema 1 shape", () => {
+    const oldProfile = createDefaultProfile() as unknown as {
+      interface: Record<string, unknown>;
+      nethack: Record<string, unknown>;
+    };
+    delete oldProfile.interface.permanentInventoryPosition;
+    delete oldProfile.interface.permanentInventoryWidth;
+    delete oldProfile.interface.permanentInventoryCollapsed;
+    delete oldProfile.nethack.permInvent;
+    delete oldProfile.nethack.perminvMode;
+
+    expect(() => validateProfile(oldProfile)).toThrow(ProfileFormatError);
   });
 
   it("validates every supported pickup class", () => {
@@ -197,6 +265,27 @@ describe("profile import and export", () => {
     expectProfileError(() => parseProfileImport(
       encoder.encode(JSON.stringify(document)),
     ), "invalid-profile");
+  });
+
+  it("rejects a schema 1 profile export using the old field set", () => {
+    const document = createProfileExport(
+      createDefaultProfile(),
+      "prealpha-3",
+      new Date("2026-09-06T12:34:56.789Z"),
+    ) as unknown as {
+      interface: Record<string, unknown>;
+      nethack: Record<string, unknown>;
+    };
+    delete document.interface.permanentInventoryPosition;
+    delete document.interface.permanentInventoryWidth;
+    delete document.interface.permanentInventoryCollapsed;
+    delete document.nethack.permInvent;
+    delete document.nethack.perminvMode;
+
+    expectProfileError(
+      () => parseProfileImport(encoder.encode(JSON.stringify(document))),
+      "invalid-profile",
+    );
   });
 
   it("rejects oversized, BOM-prefixed, NUL, and invalid UTF-8 documents", () => {

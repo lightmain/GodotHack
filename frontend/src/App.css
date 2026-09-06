@@ -1360,6 +1360,124 @@
   color: #f1f1eb;
 }
 
+.nh-playfield {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 0;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.nh-playfield-below {
+  flex-direction: column;
+}
+
+.nh-playfield-main {
+  min-width: 0;
+}
+
+.permanent-inventory {
+  min-width: 0;
+  border-left: 1px solid #30363a;
+  color: #d8d8d2;
+  background: #101315;
+  overflow: auto;
+}
+
+.permanent-inventory-below {
+  border-top: 1px solid #30363a;
+  border-left: 0;
+  max-height: 12em;
+}
+
+.permanent-inventory-compact { width: 24ch; }
+.permanent-inventory-standard { width: 32ch; }
+.permanent-inventory-wide { width: 40ch; }
+
+.permanent-inventory-below {
+  width: min(80ch, 100%);
+}
+
+.permanent-inventory-collapsed {
+  width: 4ch;
+  overflow: hidden;
+}
+
+.permanent-inventory-header {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px 4px 10px;
+  border-bottom: 1px solid #30363a;
+}
+
+.permanent-inventory-header > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.permanent-inventory-header strong,
+.permanent-inventory-header span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.permanent-inventory-header span {
+  color: #8f989d;
+  font-size: 11px;
+}
+
+.permanent-inventory-header button {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  display: grid;
+  place-items: center;
+}
+
+.permanent-inventory-items {
+  padding: 4px 0;
+}
+
+.permanent-inventory-item {
+  min-height: 1.4em;
+  display: grid;
+  grid-template-columns: 2ch 2ch minmax(0, 1fr);
+  gap: 0.5ch;
+  padding: 1px 8px;
+}
+
+.permanent-inventory-item > span:last-child {
+  overflow-wrap: anywhere;
+}
+
+.permanent-inventory-heading {
+  color: #8f989d;
+  font-weight: 700;
+}
+
+.permanent-inventory-item.selected {
+  background: #233229;
+}
+
+@media (max-width: 1180px) {
+  .nh-playfield-right {
+    flex-direction: column;
+  }
+
+  .nh-playfield-right .permanent-inventory {
+    width: min(80ch, 100%);
+    max-height: 12em;
+    border-top: 1px solid #30363a;
+    border-left: 0;
+  }
+}
+
 .nh-messages-3 {
   height: calc(3.45em + 8px);
 }
