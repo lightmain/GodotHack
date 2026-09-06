@@ -22,11 +22,14 @@ session lease 和多页面锁，不在旧基线上重复实现或手工移植阶
    `PICK_NONE` 同步返回 0，不打开 modal，也不创建输入 Promise。
 5. 把 `perm_invent` 和 `perminv_mode` 加入现有命令边界配置协议，并把协议版本
    从 1 升为 2。
-6. 把个人配置升级到 schema 2；显式迁移 schema 1，而不改变旧 schema 的含义。
+6. prealpha 阶段没有历史玩家数据，直接扩展当前 profile schema 1，不实现旧
+   本地记录、旧 `.bhprofile` 或旧 `.bhbackup` 的迁移。
 7. 永久背包默认关闭，模式默认 `all`；界面默认位于地图右侧，空间不足时自动
    放到地图下方。
 8. 数量和装备说明只显示 NetHack 提供的完整文本，不从英文文本反向解析结构化
    状态；glyph、物品字符和菜单 flags 使用 shim 的结构化字段。
+9. 本阶段保持纯展示，但已提交快照保留 revision、identifier 和 accelerator，
+   以后可以在独立动作层安全编排 `d` 后选择物品等原生命令流程。
 
 ## 2. 已确认的当前实现
 
@@ -103,8 +106,10 @@ Asyncify 重入。
 blisshack.profile.v1
 ```
 
-阶段五需要增加三个界面字段和两个 NetHack 字段。直接在 schema 1 中增加字段
-会改变既有 `.bhprofile` 和 `.bhbackup` 的解释，因此必须使用显式 schema 2。
+阶段五需要增加三个界面字段和两个 NetHack 字段。项目仍处于没有历史玩家数据
+的 prealpha 阶段，schema 1 尚未形成需要维护的外部兼容承诺。本阶段直接修改
+schema 1 的完整结构；旧开发数据可以失效，不增加迁移器、双 storage key 或
+旧文件兼容分支。
 
 ## 3. 目标、非目标和不变量
 
@@ -115,12 +120,13 @@ blisshack.profile.v1
 - 普通 `PICK_ONE`、`PICK_ANY` 和非永久 `PICK_NONE` 菜单保持现有 modal 行为。
 - Home 和游戏内 Settings 都能配置 `perm_invent` 与 `perminv_mode`。
 - 侧栏位置、宽度和折叠状态由界面配置持久化。
-- schema 1 的本地 profile、个人配置文件和完整备份可以迁移到 schema 2。
+- profile、个人配置文件和完整备份使用扩展后的当前 schema 1。
 - 更新期间不重入 WASM，不额外消耗游戏回合，不创建第二个 session。
 
 ### 3.2 非目标
 
 - 不为物品提供点击、右键、拖放或操作菜单。
+- 不实现 `InventoryActionIntent`、通用按键宏或自动发送 `d+x` 等连续输入。
 - 不解析物品英文文本来推断数量、装备槽、诅咒、材质或用途。
 - 不直接遍历 `gi.invent` 或猜测 WASM 内存中的 `struct obj` 布局。
 - 不实现 tty 的 grid 模式或 X11 式横向平移协议。
@@ -141,6 +147,8 @@ blisshack.profile.v1
 5. 一个 window ID 的新更新原子替换旧列表，不追加成重复侧栏。
 6. session 退出、fatal 清理或 bridge reset 后不保留上一局窗口和物品。
 7. profile 写入继续受阶段四同一把游戏锁保护；游戏内修改复用 session lease。
+8. 每份已提交永久背包快照都有 session 内单调递增的 revision；未来动作不得
+   只依赖数组索引或显示文本定位物品。
 
 ## 4. NetHack 5.0 调用链
 
@@ -387,14 +395,14 @@ OPTIONS=!perm_invent
 因此 Continue 也读取当前个人配置；恢复完成后的首次 `update_inventory()` 用
 恢复后的实际物品重建侧栏。
 
-## 7. profile schema 2
+## 7. profile schema 策略
 
-### 7.1 新结构
+### 7.1 扩展当前结构
 
-当前内存和导出 profile 升级为 schema 2：
+当前内存和导出 profile 继续使用 schema 1，但重新定义为以下完整结构：
 
 ```ts
-interface InterfaceSettingsV2 {
+interface InterfaceSettingsV1 {
   terminalFontSize: "small" | "medium" | "large";
   messageHistoryLines: 3 | 5;
   followPlayer: boolean;
@@ -403,7 +411,7 @@ interface InterfaceSettingsV2 {
   permanentInventoryCollapsed: boolean;
 }
 
-interface NetHackSettingsV2 {
+interface NetHackSettingsV1 {
   // 既有字段保持不变
   permInvent: boolean;
   perminvMode: "all" | "full" | "in-use";
@@ -428,40 +436,32 @@ perminvMode = all
 | `standard` | `32ch` |
 | `wide` | `40ch` |
 
-### 7.2 浏览器存储迁移
-
-新权威 key：
+### 7.2 浏览器存储
 
 ```text
-blisshack.profile.v2
+blisshack.profile.v1
 ```
 
-加载顺序：
+继续使用现有 key，不增加 `blisshack.profile.v2`。扩展后的 schema 1 仍严格
+要求完整字段：
 
-1. 优先读取并严格校验 v2 key。
-2. v2 不存在时读取并严格校验 v1 key。
-3. 合法 v1 在内存中补入第 7.1 节默认值，形成 v2。
-4. 只读加载不自动写 storage，避免 Home 展示绕过阶段四的游戏锁。
-5. 下一次受保护的 Apply、Import 或 Restore 写入一个完整 v2 key。
-6. v2 写入成功后尝试删除 v1 key；若删除失败，加载仍优先 v2，不产生混合值。
-7. Clear Local Data 删除 v1 和 v2 两个 profile key。
+- 缺少新增字段的旧开发记录按 invalid 处理，应用使用完整新默认值。
+- 不从旧记录提取可解析字段，不形成混合配置。
+- 玩家 Apply 或 Restore Defaults 后，以一次 `setItem()` 写入完整新结构。
+- stale revision 继续比较同一 key 的原始文本，阶段四多页面保护不变。
+- Clear Local Data 仍只需删除现有 profile key。
 
-stale revision 同时包含来源 key 和原始文本。另一个页面完成迁移或写入 v2 后，
-旧 draft 不能覆盖它。
+### 7.3 文件与备份
 
-### 7.3 文件与备份兼容
+- 新 `.bhprofile` 继续标记 schema 1，但要求扩展后的完整字段。
+- 缺少新字段的旧 `.bhprofile` 拒绝导入，不迁移。
+- 完整备份容器继续为 schema 1，嵌入的 profile 必须符合扩展后的当前结构。
+- 包含旧 profile 结构的 `.bhbackup` 拒绝导入，不恢复其中的存档。
+- profile diff 和备份预览加入五个新字段。
 
-- 新 `.bhprofile` 导出 schema 2。
-- 导入显式支持 schema 1 和 schema 2；schema 1 先严格按旧结构校验，再迁移。
-- 其他 schema 继续拒绝。
-- 完整备份容器仍为 schema 1，因为存档容器结构没有变化；其中嵌入的 profile
-  可以是 schema 1 或 schema 2。
-- 导入旧 `.bhbackup` 时迁移其 profile，raw save bytes、SHA-256 和结果规则
-  不变。
-- profile diff、备份预览和清除数据测试加入五个新字段。
-
-这不是把未知字段当作默认值。schema 1 和 schema 2 分别有独立严格校验器，
-只有校验成功的 schema 1 才能进入确定性迁移。
+这是 prealpha 阶段有意接受的破坏性格式更新。进入有真实玩家数据的 alpha
+阶段前必须重新评审 schema 版本和迁移政策；届时不能继续原地重定义已发布
+格式。
 
 ## 8. 永久背包前端模型
 
@@ -472,6 +472,7 @@ stale revision 同时包含来源 key 和原始文本。另一个页面完成迁
 
 ```ts
 interface PermanentInventoryState {
+  revision: number;
   windowId: number;
   prompt: string;
   items: readonly MenuItem[];
@@ -479,9 +480,9 @@ interface PermanentInventoryState {
 ```
 
 只有处理永久菜单的 `select_menu(PICK_NONE)` 时，bridge 才复制 prompt 和完整
-items 并一次发布。`begin_menu` 到 `end_menu` 之间的构建缓冲不会直接交给
-React。`GameSnapshot` 可以用该状态替代单独的 `inventoryWindowId`，或在过渡
-期间同时保留 ID；组件只读取不可变提交值。
+items、递增 revision 并一次发布。`begin_menu` 到 `end_menu` 之间的构建缓冲
+不会直接交给 React。`GameSnapshot` 可以用该状态替代单独的
+`inventoryWindowId`，或在过渡期间同时保留 ID；组件只读取不可变提交值。
 
 面板只在以下条件同时满足时渲染：
 
@@ -496,7 +497,8 @@ bridge reset 会清空 ID，防止下一局显示旧内容。
 
 每次 `beginMenu()` 清空构建缓冲，`selectMenu()` 原子替换已提交快照。窗口
 销毁按 `windowId` 清除对应提交值。React 不在 `add_menu()` 过程中渲染半成品
-列表。
+列表。revision 在每个 session 内单调递增，bridge reset 后重新开始；它只表示
+“这是否仍是用户看到的同一份列表”，不是跨 session 的物品 ID。
 
 ### 8.2 数据映射
 
@@ -514,6 +516,10 @@ bridge reset 会清空 ID，防止下一局显示旧内容。
 `(weapon in hand)` 等状态已经包含在 NetHack 文本中。本阶段不从文本解析，
 也不把 identifier 误当成数量。
 
+对 `identifier != null` 的行，状态层保留原始 identifier 和 accelerator。
+prealpha-3 的组件仍把这些行渲染为不可交互内容，但不能在复制快照时丢弃这些
+字段，也不能用数组索引或文本生成替代 ID，为后续动作层保留来源信息。
+
 ### 8.3 与临时菜单隔离
 
 完整背包更新使用 `WIN_INVEN + MENU_BEHAVE_PERMINV + PICK_NONE`。
@@ -526,6 +532,40 @@ bridge reset 会清空 ID，防止下一局显示旧内容。
 - modal 关闭不改变 `inventoryWindowId`。
 - 永久背包更新不替换 `snapshot.modal`。
 - 两者按各自 window ID 读取独立 `WindowState`。
+
+### 8.4 后续物品动作的扩展边界
+
+未来拖出、点击或快捷操作不应直接修改永久背包状态。建议另建独立的
+`InventoryActionIntent` 编排层：
+
+```ts
+interface InventoryActionIntent {
+  action: "drop" | "wear" | "wield" | "eat";
+  inventoryRevision: number;
+  identifier: number;
+}
+```
+
+以“拖出物品并丢弃”为例，未来流程应是：
+
+```text
+拖放结束
+  -> 确认仍处于主命令等待状态
+  -> 确认 permanent inventory revision 未变化
+  -> 发送原生 drop 命令 d
+  -> 等待核心产生预期的物品选择请求
+  -> 确认原物品字符仍是该请求的合法选项
+  -> 提交该物品字符
+  -> 其余数量、方向或确认提示交回现有输入 UI
+```
+
+不能不等待核心状态就一次性向 key queue 塞入 `d+x`。物品字符可能因排序、
+合并、掉落或 `fixinv` 设置变化而重新分配；revision 变化、提示类型不符或物品
+字符不再合法时必须取消 intent。可执行动作始终由 NetHack 核心产生的命令流程
+决定，前端不从物品名称猜测“可吃”“可穿戴”等能力。
+
+阶段五不实现该 intent、拖放手势或动作菜单，只确保展示状态具备 revision 和
+原始 identifier，使以后增加动作层时不必重写永久背包数据模型。
 
 ## 9. 桌面布局和交互
 
@@ -558,6 +598,7 @@ card。
 - 展开列表使用有名称的 `role="region"` 和 `tabIndex=0`，允许方向键、
   Page Up、Page Down、Home、End 和浏览器原生滚动。
 - 行本身不是按钮，不进入逐项 Tab 顺序，也不暗示可以操作物品。
+- 行保留稳定的组件边界和 data，不加入当前无效的 click/drag handler。
 - 折叠/展开按钮可见焦点明确。
 - 面板更新使用普通 React 内容更新，不使用会连续朗读每次物品变化的
   assertive live region。
@@ -591,8 +632,8 @@ Apply、Cancel、Restore Defaults、Import、Export、stale draft 和游戏锁�
 - capability 意外缺失：核心拒绝游戏内开启；shim result 返回失败，profile
   不报告完整成功。
 - 协议版本或 mode 非法：拒绝整个动态更新，回报当前权威快照。
-- profile v1 损坏：沿用 invalid 状态，不尝试迁移部分字段。
-- profile v2 写入失败：保留旧 profile 和 Settings draft。
+- 缺少新增字段的旧 profile 或损坏 profile：沿用 invalid 状态并使用默认值。
+- profile 写入失败：保留旧 profile 和 Settings draft。
 - 背包窗口不存在：面板不显示；下一次合法永久菜单更新可以恢复。
 - 永久菜单收到非 `PICK_NONE`：视为 bridge/core 契约错误并进入现有 fatal，
   不把它当成可点击侧栏。
@@ -647,12 +688,11 @@ doc/BlissHack/plans/prealpha-3.md
 
 ### 13.1 profile 和配置单元测试
 
-- schema 2 全字段严格校验。
-- v1 本地记录、`.bhprofile` 和 `.bhbackup` 确定性迁移。
-- v1 缺失/未知字段仍按 v1 规则拒绝，不被 v2 默认掩盖。
-- v2 key 优先于 v1；迁移读取不自动写 storage。
-- v2 成功写入后旧 key 残留不影响读取。
-- Clear Local Data 删除两个 profile key。
+- 扩展后的 schema 1 全字段严格校验。
+- 缺少新增字段的旧本地记录回退完整默认值。
+- 旧 `.bhprofile` 和内嵌旧 profile 的 `.bhbackup` 被拒绝。
+- 未知字段和错误类型仍被拒绝，不进行部分读取。
+- Clear Local Data 删除现有 profile key。
 - 三种位置/宽度、折叠、开关和三种 mode 的 diff 与往返。
 - rc 固定顺序为 mode 后开关，关闭时最终保持关闭。
 
@@ -662,10 +702,12 @@ doc/BlissHack/plans/prealpha-3.md
 - 协议 1、保留位、非法 mode 和 tty-only mode 被拒绝。
 - 永久 `PICK_NONE` 同步返回 0，不产生 modal 或 pending input。
 - 同一永久窗口的第二次更新替换第一份列表。
+- 每次完整提交递增 revision；构建中的菜单不改变已提交 revision。
 - 普通 `PICK_NONE` 仍是可关闭 modal。
 - 永久窗口和普通选择菜单同时存在时互不覆盖。
 - 窗口 destroy、bridge reset 和下一 session 清除 inventory ID。
 - `permInvent=false` 时即使旧窗口仍存在也不渲染。
+- item snapshot 保留 identifier 和 accelerator，不把数组索引当身份。
 
 ### 13.3 组件和布局测试
 
@@ -705,19 +747,18 @@ doc/BlissHack/plans/prealpha-3.md
 
 每一步保持构建通过并作为独立审核点。步骤二集中完成唯一一次 WASM 重建。
 
-### 步骤一：profile schema 2 和迁移
+### 步骤一：扩展当前 profile schema
 
-- 增加五个新字段、默认值和严格 schema 2 校验。
-- 保留独立 schema 1 校验器并实现确定性迁移。
-- 增加 v2 storage key、旧 key 读取和清除逻辑。
+- 在 schema 1 增加五个新字段、默认值和严格校验。
+- 保持现有 storage key，不增加迁移器或旧格式分支。
 - 更新 profile 文件、完整备份、差异预览和锁内 stale revision。
 - 扩展 rc 生成器，但暂不让未更新 WASM 的游戏内协议发送新增字段。
 
 验收：
 
-- 旧浏览器 profile、旧 `.bhprofile` 和旧 `.bhbackup` 可迁移。
-- 非法旧文件不会因迁移而被接受。
-- 迁移不绕过游戏锁写入 localStorage。
+- 缺少新字段的旧开发数据明确回退默认值或拒绝导入。
+- 新 profile 和完整备份往返得到相同配置。
+- profile 写入继续经过游戏锁和同一 key 原子替换。
 
 ### 步骤二：shim 能力和协议 2
 
@@ -737,10 +778,11 @@ doc/BlissHack/plans/prealpha-3.md
 
 ### 步骤三：永久背包状态模型和组件
 
-- 在永久 `select_menu(PICK_NONE)` 时提交不可变列表快照。
+- 在永久 `select_menu(PICK_NONE)` 时提交带 revision 的不可变列表快照。
 - 把运行时开关与已提交永久背包组合成可见性判断。
 - 实现 `PermanentInventoryPanel` 和只读 item rows。
 - 保持普通菜单渲染器不变。
+- 保留 identifier 和 accelerator，但不实现动作 intent。
 - 覆盖替换、空列表、关闭、destroy、reset 和并存测试。
 
 验收：
@@ -748,6 +790,7 @@ doc/BlissHack/plans/prealpha-3.md
 - 每个 session 最多一个侧栏。
 - 更新不产生 modal、pending input 或重复列表。
 - 数量与装备说明保持核心原文，结构化字段不靠文本猜测。
+- revision 能识别展示期间发生的背包替换，为未来取消过期动作提供依据。
 
 ### 步骤四：游戏布局和界面配置
 
@@ -805,9 +848,11 @@ git diff --check
 2. `WC_PERM_INVENT` 只在 Emscripten shim 声明，原生 shim 能力不变。
 3. 不实现完整 `ctrl_nhwindow()` 或 slot-based inventory。
 4. `#perminv` 在 prealpha-3 只安全重填，不负责把焦点移入浏览器侧栏。
-5. profile 升级到 schema 2，并兼容迁移 schema 1 profile 和 schema 1 backup。
+5. prealpha 阶段直接扩展 schema 1，不兼容或迁移旧开发 profile 与 backup。
 6. 永久背包默认关闭，mode 默认 `all`。
 7. 侧栏配置采用 right/below、24/32/40ch 三档宽度和折叠布尔值。
 8. 数量及装备状态显示 NetHack 原文，不增加文本解析或新的物品查询 ABI。
-9. C 修改默认只限 `win/shim/winshim.c`；若测试证明需要修改核心文件，先暂停
+9. 永久背包快照保留 revision、identifier 和 accelerator；本阶段不实现拖放、
+   点击操作、`InventoryActionIntent` 或 `d+x` 自动输入。
+10. C 修改默认只限 `win/shim/winshim.c`；若测试证明需要修改核心文件，先暂停
    并重新评审。
