@@ -22,6 +22,7 @@ import {
   normalizePlayerNameInput,
   preparePlayerNamePrompt,
   queueRuntimeSettings,
+  requestSaveAndExit,
   resetBridgeState,
   sendKey,
   sendPosition,
@@ -624,6 +625,81 @@ describe("key, position, and prompt input", () => {
     await expectPending(invalid);
     sendKey(27);
     await expect(invalid).resolves.toBe(113);
+  });
+
+  it("auto-confirms only the save prompt requested from command input", async () => {
+    const command = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      1,
+    );
+
+    requestSaveAndExit();
+
+    await expect(command).resolves.toBe("S".charCodeAt(0));
+    await expect(
+      shimCallback("shim_yn_function", "Really save?", "yn", 110),
+    ).resolves.toBe("y".charCodeAt(0));
+    expect(getSnapshot().inputRequest).toBeNull();
+  });
+
+  it("clears save auto-confirmation when the next yn prompt does not match", async () => {
+    const command = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      1,
+    );
+    requestSaveAndExit();
+    await expect(command).resolves.toBe("S".charCodeAt(0));
+
+    const unrelated = shimCallback(
+      "shim_yn_function",
+      "Really quit?",
+      "yn",
+      110,
+    );
+    await expectPending(unrelated);
+    sendKey("n".charCodeAt(0));
+    await expect(unrelated).resolves.toBe("n".charCodeAt(0));
+
+    const laterSave = shimCallback(
+      "shim_yn_function",
+      "Really save?",
+      "yn",
+      110,
+    );
+    await expectPending(laterSave);
+    sendKey("n".charCodeAt(0));
+    await expect(laterSave).resolves.toBe("n".charCodeAt(0));
+  });
+
+  it("does not arm save auto-confirmation outside command input", async () => {
+    const direction = shimCallback(
+      "shim_nh_poskey",
+      0x300,
+      0x302,
+      0x304,
+      3,
+    );
+
+    requestSaveAndExit();
+    await expectPending(direction);
+    sendKey("h".charCodeAt(0));
+    await expect(direction).resolves.toBe("h".charCodeAt(0));
+
+    const savePrompt = shimCallback(
+      "shim_yn_function",
+      "Really save?",
+      "yn",
+      110,
+    );
+    await expectPending(savePrompt);
+    sendKey("n".charCodeAt(0));
+    await expect(savePrompt).resolves.toBe("n".charCodeAt(0));
   });
 
   it("returns q unchanged for the unrestricted role-selection prompt", async () => {

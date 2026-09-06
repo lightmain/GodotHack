@@ -135,6 +135,7 @@ type PendingAction =
     resolve: (value: number) => void;
     positionPointers: { x: number; y: number; modifier: number } | null;
     module: EmscriptenModule;
+    commandInput: boolean;
   }
   | {
     kind: "yn";
@@ -183,6 +184,9 @@ const MENU_ITEM_FLAGS_OFFSET = 12;
 const GETLIN_BUFFER_SIZE = 256;
 const PLAYER_NAME_BUFFER_SIZE = 32;
 const KEY_QUEUE_LIMIT = 2;
+const SAVE_COMMAND = "S".charCodeAt(0);
+const SAVE_CONFIRM_QUERY = "Really save?";
+const YES_RESPONSE = "y".charCodeAt(0);
 const BL_ATTCLR_MAX = 24;
 const EXTCMD_ENTRY_SIZE = 24;
 const EXTCMD_TEXT_OFFSET = 4;
@@ -195,6 +199,7 @@ const INTERNALCMD = 0x0040;
 let pendingAction: PendingAction | null = null;
 const queuedKeys: number[] = [];
 let typeaheadEnabled = false;
+let autoConfirmSaveExit = false;
 let knownSaveNames: string[] = [];
 let pendingRuntimeSettings: RuntimeNetHackSettings | null = null;
 
@@ -476,6 +481,17 @@ export function sendKey(value: number): void {
 }
 
 /**
+ * Send the native save command and auto-confirm only its immediate save prompt.
+ * The intent is armed only while the core is waiting for a regular key.
+ * @returns nothing; unsupported input states leave the bridge unchanged.
+ */
+export function requestSaveAndExit(): void {
+  if (pendingAction?.kind !== "key" || !pendingAction.commandInput) return;
+  autoConfirmSaveExit = true;
+  sendKey(SAVE_COMMAND);
+}
+
+/**
  * Resolve nh_poskey with a map position and mouse button modifier.
  * @param x - NetHack map column.
  * @param y - NetHack map row.
@@ -615,6 +631,7 @@ export function resetBridgeState(): void {
   pendingRuntimeSettings = null;
   queuedKeys.length = 0;
   typeaheadEnabled = false;
+  autoConfirmSaveExit = false;
   knownSaveNames = [];
   resetGameState();
 }
@@ -1076,6 +1093,7 @@ function waitForKey(
   positionPointers: { x: number; y: number; modifier: number } | null,
   commandInput: boolean,
 ): Promise<number> {
+  if (commandInput && autoConfirmSaveExit) autoConfirmSaveExit = false;
   setCommandInput(commandInput);
   const queued = queuedKeys.shift();
   if (queued !== undefined) {
@@ -1084,7 +1102,13 @@ function waitForKey(
   }
   setInputRequest({ kind: positionPointers ? "position" : "key" });
   return new Promise<number>((resolve) => {
-    setPending({ kind: "key", resolve, positionPointers, module });
+    setPending({
+      kind: "key",
+      resolve,
+      positionPointers,
+      module,
+      commandInput,
+    });
   });
 }
 
@@ -1099,9 +1123,16 @@ function waitForYn(
   choices: string | null,
   defaultCode: number,
 ): Promise<number> {
+  const normalizedQuery = query ?? "";
+  if (autoConfirmSaveExit) {
+    autoConfirmSaveExit = false;
+    if (normalizedQuery === SAVE_CONFIRM_QUERY && choices === "yn") {
+      return Promise.resolve(YES_RESPONSE);
+    }
+  }
   setInputRequest({
     kind: "yn",
-    query: query ?? "",
+    query: normalizedQuery,
     choices,
     defaultCode,
   });

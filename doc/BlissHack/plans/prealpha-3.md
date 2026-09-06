@@ -357,7 +357,8 @@ perminv_mode
 - 个人配置 JSON 可以解析且不包含玩家名、存档或诊断内容。
 - Settings 的键盘导航、保存、取消和离开确认测试通过。
 - Esc 只在主命令等待时打开暂停界面；Resume 不向核心发送输入。
-- `Save and Exit` 与键盘 `S` 使用相同的确认、保存、flush 和退出流程。
+- `Save and Exit` 只对对应的 `Really save?` 请求自动回答 `y`，其余保存、
+  flush 和退出流程与键盘 `S` 相同；直接按 `S` 仍显示原生确认。
 - 游戏内图形修改与原生命令修改能够双向同步。
 
 ### 5.8 手动观察标准
@@ -375,8 +376,8 @@ perminv_mode
   module 启动前生成临时 `.nethackrc`，IDBFS 仍只负责 `/save`。
 - Home 和游戏内 Settings 复用同一套结构化表单；`.bhprofile` 支持严格校验、
   差异预览、导入、导出和恢复默认值。
-- 主命令等待时 Esc 打开暂停界面；Resume 保留原输入，Save and Exit 复用
-  原生 `S` 保存退出流程，其他输入状态中的 Esc 保持 NetHack 行为。
+- 主命令等待时 Esc 打开暂停界面；Resume 保留原输入，Save and Exit 自动
+  确认并复用原生 `S` 保存退出流程，其他输入状态中的 Esc 保持 NetHack 行为。
 - 七项动态 NetHack 配置通过版本化 32-bit shim 协议在安全命令边界应用并
   双向同步；React 不在 Asyncify 等待期间通过 `ccall()` 重入 WASM。
 - 使用锁定工具链重新生成并验证 `nethack.js`、`nethack.wasm` 和
@@ -384,7 +385,7 @@ perminv_mode
 
 最终验收结果：
 
-- `npm test`：32 个测试文件、316 项断言通过。
+- `npm test`：32 个测试文件、319 项断言通过。
 - `npm run lint -- --deny-warnings`：0 warning、0 error。
 - `npm run build`：TypeScript 和 Vite 生产构建通过，运行时三件套校验通过。
 - `npm run test:integration:wasm`：33 项真实 WASM 断言通过。

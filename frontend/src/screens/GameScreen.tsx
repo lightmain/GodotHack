@@ -53,6 +53,7 @@ import {
   dismissDisplay,
   normalizePlayerNameInput,
   queueRuntimeSettings,
+  requestSaveAndExit,
   sendKey,
   sendPosition,
   submitExtendedCommand,
@@ -269,7 +270,7 @@ export function GameScreen({
           onResume={() => setPauseView(null)}
           onSaveAndExit={() => {
             setPauseView(null);
-            sendKey("S".charCodeAt(0));
+            requestSaveAndExit();
           }}
           onSettings={() => setPauseView("settings")}
         />

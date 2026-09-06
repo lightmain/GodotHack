@@ -145,8 +145,9 @@ React 截获 Esc 且不完成当前输入 Promise，就能保持核心暂停。
 
 - `Resume`：关闭 modal，继续等待原来的输入，不向 NetHack 发送字符。
 - `Settings`：在同一暂停层进入 Settings，不创建 module，不调用 `main()`。
-- `Save and Exit`：关闭暂停层并向原输入请求发送 ASCII `S`，完整复用
-  NetHack 的确认、保存、退出和 IDBFS flush 流程。
+- `Save and Exit`：关闭暂停层并向原输入请求发送 ASCII `S`，只对紧随其后的
+  精确 `Really save?` 请求自动回答 `y`，继续复用 NetHack 的保存、退出和
+  IDBFS flush 流程。玩家直接按 `S` 时仍显示原生确认。
 
 不能仅根据“当前有 key/position input request”判断是否可以暂停。
 `nh_poskey()` 也用于地图位置选择。NetHack 已用
@@ -615,14 +616,16 @@ rc 由封闭类型生成，正常情况下不存在用户可制造的语法错�
 - 仅 `commandInp` 时由 Esc 打开暂停 modal。
 - Resume 恢复同一个待处理输入。
 - Settings 复用步骤三的表单组件，但显示当前核心实际值。
-- Save and Exit 向原输入发送 `S`，复用原生确认和退出流程。
+- Save and Exit 向原输入发送 `S`，一次性自动回答对应保存确认，并复用原生
+  保存和退出流程。
 - 原生命令变化同步图形控件；玩家主动变化同步个人默认配置。
 
 验收：
 
 - Esc 在主命令处不进入核心；在方向、位置、菜单和确认提示中保持原生含义。
 - 暂停、恢复和打开 Settings 都不创建新 session 或 module。
-- Save and Exit 与键盘 `S` 产生相同确认、保存、flush 和返回 Home 流程。
+- Save and Exit 除自动回答对应确认外，与键盘 `S` 产生相同的保存、flush 和
+  返回 Home 流程；自动回答不得影响其他 `yn` 请求。
 - 恢复旧存档的初始快照不会覆盖个人默认值。
 - 图形修改和原生命令修改双向同步。
 

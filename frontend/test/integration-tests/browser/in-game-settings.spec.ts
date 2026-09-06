@@ -54,10 +54,16 @@ test("pauses only at command input and synchronizes in-game settings", async ({
   ).not.toBeChecked();
   await page.getByRole("button", { name: "Cancel" }).click();
 
-  await page.getByRole("button", { name: "Save and Exit" }).click();
+  await page.getByRole("button", { name: "Resume" }).click();
+  await page.keyboard.press("Shift+S");
   await expect(page.getByText(/Really save/)).toBeVisible();
-  await page.keyboard.press("y");
+  await page.keyboard.press("n");
+  await expect(page.getByText(/Really save/)).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", { name: "Save and Exit" }).click();
   await expect(page.getByText("--More--", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Really save/)).toHaveCount(0);
   await page.keyboard.press("Space");
   await expect(page.getByRole("button", { name: "New Game" })).toBeVisible({
     timeout: 15_000,
