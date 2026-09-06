@@ -1170,16 +1170,19 @@ void shim_update_inventory(int a1 UNUSED) {
 `doc/window.txt` 还规定非零参数用于提示并执行永久背包滚动操作，当前
 WASM shim 没有实现该分支。
 
-BlissHack 从 2026-09-07 起在 `shim_procs.wincap` 声明
-`WC_PERM_INVENT`。核心因此可以创建 `NHW_PERMINVENT` 窗口，并通过
-`MENU_BEHAVE_PERMINV` 的 `PICK_NONE` 菜单更新发送完整快照。前端在
-`select_menu()` 到达时原子替换侧栏数据；普通 `PICK_NONE`、`PICK_ONE` 和
+BlissHack 从 2026-09-07 起只在 Emscripten 构建的 `shim_procs.wincap`
+声明 `WC_PERM_INVENT`；原生 shim consumer 不承担该能力。核心因此可以创建
+`NHW_PERMINVENT` 窗口，并通过 `MENU_BEHAVE_PERMINV` 的 `PICK_NONE`
+菜单更新发送完整快照。前端在 `select_menu()` 到达时原子替换侧栏数据，并
+拒绝永久菜单使用其他选择模式；普通 `PICK_NONE`、`PICK_ONE` 和
 `PICK_ANY` 菜单仍使用 modal。
 
 运行时 Settings 协议版本 2 另外携带 `perm_invent` 和 `perminv_mode`。更新仍
 只在 `shim_get_nh_event()` 的安全命令边界通过 `parseoptions()` 应用。模式或
-开关变化后，shim 在当前 C 调用栈中调用 `perm_invent_toggled()`，不会让 React
-通过额外 `ccall()` 重入 Asyncify。
+开关变化后，shim 在当前 C 调用栈中调用 `update_inventory()`；关闭状态由配置
+快照立即隐藏，开启或模式变化则通过现有同步菜单链重填。该路径不依赖
+`shim_ctrl_nhwindow()` 的空返回值，也不会让 React 通过额外 `ccall()` 重入
+Asyncify。
 
 ---
 

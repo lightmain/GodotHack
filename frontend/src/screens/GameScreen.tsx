@@ -228,9 +228,9 @@ export function GameScreen({
   /** Persist the panel collapse preference without entering the WASM runtime. */
   function setInventoryCollapsed(collapsed: boolean): void {
     void onApplyProfile(validateProfile({
-      ...profile,
+      ...gameProfile,
       interface: {
-        ...profile.interface,
+        ...gameProfile.interface,
         permanentInventoryCollapsed: collapsed,
       },
     })).catch(() => {
@@ -258,7 +258,11 @@ export function GameScreen({
           {snapshot.error}
         </section>
       ) : (
-        <section className="nh-terminal" aria-label="NetHack terminal">
+        <section
+          aria-label="NetHack terminal"
+          className="nh-terminal"
+          inert={snapshot.modal !== null || pauseView !== null}
+        >
           <MessageArea
             historyLines={settings.messageHistoryLines}
             messages={snapshot.messages}

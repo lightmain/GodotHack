@@ -370,16 +370,11 @@ shim_apply_done:
             status_initialize(REASSESS_ONLY);
         disp.botl = TRUE;
     }
-    if (applied && flags.sortpack != old_sortpack)
-        update_inventory();
     if (applied
-        && (iflags.perm_invent != old_perm_invent
-            || iflags.perminv_mode != old_perminv_mode)) {
-        if (old_perm_invent)
-            perm_invent_toggled(TRUE);
-        if (iflags.perm_invent)
-            perm_invent_toggled(FALSE);
-    }
+        && (flags.sortpack != old_sortpack
+            || iflags.perm_invent != old_perm_invent
+            || iflags.perminv_mode != old_perminv_mode))
+        update_inventory();
     return applied;
 }
 
@@ -555,7 +550,10 @@ struct window_procs shim_procs = {
      | WC_ASCII_MAP
      | WC_MOUSE_SUPPORT
      | WC_COLOR | WC_HILITE_PET | WC_INVERSE | WC_EIGHT_BIT_IN
-     | WC_PERM_INVENT),
+#ifdef __EMSCRIPTEN__
+     | WC_PERM_INVENT
+#endif
+     ),
     (0
 #if defined(SELECTSAVED)
      | WC2_SELECTSAVED

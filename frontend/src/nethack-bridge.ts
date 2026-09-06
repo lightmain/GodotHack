@@ -1054,6 +1054,9 @@ function selectMenu(
   if (menuListPtr !== 0) module.setValue(menuListPtr, 0, "*");
   const window = getWindow(winid);
   if (window && (window.menuBehavior & MENU_BEHAVE_PERMINV) !== 0) {
+    if (how !== PICK_NONE) {
+      throw new Error("Permanent inventory menu requires PICK_NONE");
+    }
     setInventoryWindow(winid);
     return 0;
   }

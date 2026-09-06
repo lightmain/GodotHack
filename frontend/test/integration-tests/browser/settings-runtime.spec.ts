@@ -66,13 +66,26 @@ test("renders and collapses the core permanent inventory without a modal", async
   const inventory = page.getByRole("region", { name: "Inventory" });
   await expect(inventory).toBeVisible();
   await expect(inventory).toContainText(/\d+ items?/);
-  await expect(page.locator(".nh-menu-dialog")).toHaveCount(0);
+  await expect(page.locator(".nh-dialog.nh-menu")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Collapse inventory" }).click();
   await expect(
     page.getByRole("button", { name: "Expand inventory" }),
   ).toBeVisible();
   await expect(inventory.locator(".permanent-inventory-item")).toHaveCount(0);
+
+  await page.setViewportSize({ width: 900, height: 900 });
+  const collapsedBox = await inventory.boundingBox();
+  expect(collapsedBox?.width).toBeLessThan(80);
+
+  await page.keyboard.press("i");
+  await expect(page.locator(".nh-dialog.nh-menu")).toBeVisible();
+  await expect(page.locator(".nh-terminal")).toHaveAttribute("inert", "");
+  await page.keyboard.press("Tab");
+  expect(await page.locator(".nh-terminal").evaluate(
+    (terminal) => !terminal.contains(document.activeElement),
+  )).toBe(true);
+  await page.keyboard.press("Escape");
   expect(errors).toEqual({ console: [], page: [] });
 });
 

@@ -109,10 +109,10 @@ M win/shim/winshim.c
 - **文件**：`win/shim/winshim.c`
 - **引入提交**：阶段五提交 `feat: add permanent inventory panel`
 - **目的**：
-  - 在 shim window capability 中声明 `WC_PERM_INVENT`。
+  - 只在 Emscripten shim window capability 中声明 `WC_PERM_INVENT`。
   - 把 `perm_invent` 和 `perminv_mode` 加入 32-bit Settings 协议版本 2。
-  - 在命令边界通过 `parseoptions()` 应用选项，并在同一 C 调用栈中完成永久
-    背包窗口的关闭或重建。
+  - 在命令边界通过 `parseoptions()` 应用选项，并以 `update_inventory()`
+    触发开启和模式变化后的同步重填。
   - 保留 `shim_update_inventory()` 直接调用 `repopulate_perminvent()` 的
     Asyncify 非重入路径。
 - **源码范围**：不修改 `src/options.c`、`src/invent.c` 或 raw save 格式。

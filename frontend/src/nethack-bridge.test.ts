@@ -957,6 +957,30 @@ describe("menus", () => {
     expect(getSnapshot().permanentInventory?.items).toHaveLength(1);
   });
 
+  it("rejects a permanent inventory menu with an interactive selection mode", async () => {
+    const inventory = await shimCallback(
+      "shim_create_nhwindow",
+      NHW_MENU,
+    ) as number;
+    await shimCallback(
+      "shim_start_menu",
+      inventory,
+      MENU_BEHAVE_PERMINV,
+    );
+    await shimCallback("shim_end_menu", inventory, "Inventory");
+
+    await expect(
+      shimCallback("shim_select_menu", inventory, PICK_ONE, 0),
+    ).resolves.toBe(-1);
+    expect(getSnapshot()).toMatchObject({
+      phase: "error",
+      error: "shim_select_menu: Permanent inventory menu requires PICK_NONE",
+    });
+    expect(getSnapshot().permanentInventory).toBeNull();
+    expect(getSnapshot().modal).toBeNull();
+    expect(isWaitingForInput()).toBe(false);
+  });
+
   it("isolates ordinary menus and clears permanent inventory on destroy and reset", async () => {
     const inventory = await shimCallback("shim_create_nhwindow", NHW_MENU) as number;
     await shimCallback("shim_start_menu", inventory, MENU_BEHAVE_PERMINV);

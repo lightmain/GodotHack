@@ -1476,6 +1476,10 @@
     border-top: 1px solid #30363a;
     border-left: 0;
   }
+
+  .nh-playfield-right .permanent-inventory-collapsed {
+    width: 4ch;
+  }
 }
 
 .nh-messages-3 {
