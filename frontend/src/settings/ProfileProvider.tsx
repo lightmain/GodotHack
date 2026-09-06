@@ -38,11 +38,18 @@ export function ProfileProvider({
     return saved;
   }, [store]);
 
+  const clearProfile = useCallback(() => {
+    const cleared = store.clear();
+    setState({ profile: cleared, status: "missing" });
+    return cleared;
+  }, [store]);
+
   const value = useMemo<ProfileContextValue>(() => ({
     profile: state.profile,
     loadStatus: state.status,
+    clearProfile,
     replaceProfile,
-  }), [replaceProfile, state]);
+  }), [clearProfile, replaceProfile, state]);
 
   return (
     <ProfileContext value={value}>

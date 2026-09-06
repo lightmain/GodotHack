@@ -7,7 +7,7 @@ import {
 /** Result returned by the narrow shim C validator for one candidate file. */
 type SaveValidation =
   | { status: "ready"; identity: { playerName: string } }
-  | { status: "invalid"; error: string };
+  | { status: "damaged"; reason: "truncated" };
 
 /** Save-list record produced from a candidate path and its validation. */
 type SaveListEntry = { path: string; modifiedAt: number | null } & SaveValidation;
@@ -25,6 +25,11 @@ interface StorageServiceContract {
   readSave(path: string): Promise<Uint8Array>;
   restoreOriginalSave(path: string, bytes: Uint8Array): Promise<void>;
   deleteSave(path: string): Promise<void>;
+  exportAllSaves(): Promise<Array<{ fileName: string; bytes: Uint8Array }>>;
+  clearManagedFiles(): Promise<Array<{ path: string; bytes: Uint8Array }>>;
+  restoreManagedFiles(
+    files: Array<{ path: string; bytes: Uint8Array }>,
+  ): Promise<void>;
   flush(): Promise<void>;
 }
 
@@ -228,12 +233,12 @@ describe("save file access", () => {
     );
   });
 
-  it("keeps an invalid save candidate as a disabled list entry", async () => {
+  it("keeps a damaged save candidate as a disabled list entry", async () => {
     const harness = createStorageModuleHarness();
     harness.files.set("/save/0Broken", Uint8Array.of(0x00));
     const service = await createService(harness, async () => ({
-      status: "invalid",
-      error: "Save is incompatible or damaged",
+      status: "damaged",
+      reason: "truncated",
     }));
     const initialization = service.initialize();
     harness.syncRequests[0].complete();
@@ -242,8 +247,8 @@ describe("save file access", () => {
     await expect(service.listSaves()).resolves.toEqual([{
       path: "/save/0Broken",
       modifiedAt: 0,
-      status: "invalid",
-      error: "Save is incompatible or damaged",
+      status: "damaged",
+      reason: "truncated",
     }]);
   });
 
@@ -261,6 +266,25 @@ describe("save file access", () => {
     expect(bytes).toEqual(original);
     expect(bytes).not.toBe(original);
     expect(harness.module.FS.readFile).toHaveBeenCalledWith("/save/0BinaryHero");
+  });
+
+  it("exports every formal save even when validation cannot continue it", async () => {
+    const harness = createStorageModuleHarness();
+    harness.files.set("/save/0Ada", Uint8Array.of(1));
+    harness.files.set("/save/0Broken", Uint8Array.of(2));
+    harness.files.set("/save/notes.txt", Uint8Array.of(3));
+    const service = await createService(harness, async (_module, path) =>
+      path.endsWith("Ada")
+        ? { status: "ready", identity: { playerName: "Ada" } }
+        : { status: "damaged", reason: "truncated" });
+    const initialization = service.initialize();
+    harness.syncRequests[0].complete();
+    await initialization;
+
+    await expect(service.exportAllSaves()).resolves.toEqual([
+      { fileName: "0Ada", bytes: Uint8Array.of(1) },
+      { fileName: "0Broken", bytes: Uint8Array.of(2) },
+    ]);
   });
 
   it("rejects a missing save read instead of returning guessed content", async () => {
@@ -290,6 +314,53 @@ describe("save file access", () => {
     );
     expect(harness.files.get("/save/0Ada")).toEqual(original);
     expect("writeSave" in service).toBe(false);
+  });
+});
+
+describe("managed storage clearing", () => {
+  it("clears all regular mount files and can restore the returned snapshot", async () => {
+    const harness = createStorageModuleHarness();
+    harness.files.set("/save/0Ada", Uint8Array.of(1));
+    harness.files.set("/save/level.0", Uint8Array.of(2));
+    const service = await createService(harness);
+    const initialization = service.initialize();
+    harness.syncRequests[0].complete();
+    await initialization;
+
+    const clearing = service.clearManagedFiles();
+    await vi.waitFor(() => expect(harness.syncRequests).toHaveLength(2));
+    harness.syncRequests[1].complete();
+    const snapshot = await clearing;
+    expect(harness.files.size).toBe(0);
+    expect(snapshot).toEqual([
+      { path: "/save/0Ada", bytes: Uint8Array.of(1) },
+      { path: "/save/level.0", bytes: Uint8Array.of(2) },
+    ]);
+
+    const restoring = service.restoreManagedFiles(snapshot);
+    await vi.waitFor(() => expect(harness.syncRequests).toHaveLength(3));
+    harness.syncRequests[2].complete();
+    await restoring;
+    expect(harness.files.get("/save/0Ada")).toEqual(Uint8Array.of(1));
+    expect(harness.files.get("/save/level.0")).toEqual(Uint8Array.of(2));
+  });
+
+  it("restores all bytes when the clear flush fails", async () => {
+    const harness = createStorageModuleHarness();
+    harness.files.set("/save/0Ada", Uint8Array.of(1, 2, 3));
+    const service = await createService(harness);
+    const initialization = service.initialize();
+    harness.syncRequests[0].complete();
+    await initialization;
+
+    const clearing = service.clearManagedFiles();
+    await vi.waitFor(() => expect(harness.syncRequests).toHaveLength(2));
+    harness.syncRequests[1].complete(new Error("clear failed"));
+    await vi.waitFor(() => expect(harness.syncRequests).toHaveLength(3));
+    harness.syncRequests[2].complete();
+
+    await expect(clearing).rejects.toThrow("clear failed");
+    expect(harness.files.get("/save/0Ada")).toEqual(Uint8Array.of(1, 2, 3));
   });
 });
 

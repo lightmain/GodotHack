@@ -31,6 +31,7 @@ describe("SettingsScreen", () => {
     expect(html).toMatch(/<h2[^>]*>Interface<\/h2>/);
     expect(html).toMatch(/<h2[^>]*>NetHack<\/h2>/);
     expect(html).toMatch(/<h2[^>]*>Profile<\/h2>/);
+    expect(html).toMatch(/<h2[^>]*>Data<\/h2>/);
     expect(html).toContain("Terminal font size");
     expect(html).toContain("Message history");
     expect(html).toContain("Follow player on the map");
@@ -42,6 +43,9 @@ describe("SettingsScreen", () => {
     expect(html).toContain("Sort inventory");
     expect(html).toContain("Show experience");
     expect(html).toContain("Show turn count");
+    expect(html).toContain("Export Full Backup");
+    expect(html).toContain("Import Full Backup");
+    expect(html).toContain("Clear Local Data");
   });
 
   it("starts clean with the reviewed defaults selected", () => {
@@ -92,5 +96,7 @@ describe("SettingsScreen", () => {
     expect(html).not.toContain("<h2 id=\"profile-title\">Profile</h2>");
     expect(html).not.toContain("Import Profile");
     expect(html).not.toContain("Export Profile");
+    expect(html).not.toContain("Export Full Backup");
+    expect(html).not.toContain("Clear Local Data");
   });
 });

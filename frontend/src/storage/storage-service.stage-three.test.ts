@@ -14,7 +14,8 @@ interface SaveIdentity {
 
 type SaveValidation =
   | { status: "ready"; identity: SaveIdentity }
-  | { status: "invalid"; error: string };
+  | { status: "incompatible"; reason: "fingerprint-mismatch" }
+  | { status: "damaged"; reason: "truncated" };
 
 interface RawSaveImportRequest {
   bytes: Uint8Array;
@@ -186,8 +187,8 @@ describe("raw save import", () => {
   it("rejects invalid bytes before creating a formal or temporary file", async () => {
     const harness = createStorageModuleHarness();
     const validateSaveBytes = vi.fn(async () => ({
-      status: "invalid" as const,
-      error: "Save is incompatible with this BlissHack build",
+      status: "incompatible" as const,
+      reason: "fingerprint-mismatch" as const,
     }));
     const { service } = await createService(
       harness,

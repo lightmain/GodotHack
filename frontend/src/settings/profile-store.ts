@@ -12,6 +12,7 @@ export const PROFILE_STORAGE_KEY = "blisshack.profile.v1";
 /** Minimum localStorage contract used by the profile store. */
 export interface ProfileStorage {
   getItem(key: string): string | null;
+  removeItem?(key: string): void;
   setItem(key: string, value: string): void;
 }
 
@@ -30,6 +31,7 @@ export interface ProfileLoadResult {
 export interface ProfileStore {
   load(): ProfileLoadResult;
   replace(profile: BlissHackProfileV1): BlissHackProfileV1;
+  clear(): BlissHackProfileV1;
 }
 
 /**
@@ -78,6 +80,15 @@ export function createProfileStore(
       }
       storage.setItem(PROFILE_STORAGE_KEY, serialized);
       return validateProfile(normalized);
+    },
+
+    /** Remove the persisted profile and return detached defaults. */
+    clear(): BlissHackProfileV1 {
+      if (!storage?.removeItem) {
+        throw new Error("Profile storage cannot be cleared");
+      }
+      storage.removeItem(PROFILE_STORAGE_KEY);
+      return createDefaultProfile();
     },
   };
 }

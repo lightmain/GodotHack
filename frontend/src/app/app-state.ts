@@ -46,6 +46,7 @@ export type AppAction =
   | { type: "SAVE_PICKER_CLOSED"; moduleId: string }
   | { type: "SETTINGS_OPENED"; moduleId: string }
   | { type: "SETTINGS_CLOSED"; moduleId: string }
+  | { type: "LOCAL_DATA_CLEARED"; moduleId: string; nextModuleId: string }
   | {
     type: "HOME_SAVES_UPDATED";
     moduleId: string;
@@ -138,6 +139,15 @@ export function appReducer(state: AppState, action: AppAction): AppState {
           moduleId: state.moduleId,
           savePickerOpen: false,
           storageAvailable: state.storageAvailable,
+        }
+        : state;
+    case "LOCAL_DATA_CLEARED":
+      return isCurrentModule(state, action.moduleId)
+        && (state.phase === "settings" || state.phase === "home")
+        ? {
+          phase: "booting",
+          moduleId: action.nextModuleId,
+          status: "loading-module",
         }
         : state;
     case "HOME_SAVES_UPDATED":

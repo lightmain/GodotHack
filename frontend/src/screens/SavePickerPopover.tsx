@@ -3,6 +3,7 @@ import { Download, Trash2, Upload } from "lucide-react";
 import type { HomeSaveImportResult } from "../session/session-manager";
 import {
   MAX_RAW_SAVE_BYTES,
+  saveValidationMessage,
   type RawSaveImportRequest,
   type RawSaveImportResult,
   type RawSaveSummary,
@@ -244,23 +245,21 @@ export function SavePickerPopover({
                       save.identity.gender,
                       save.identity.alignment,
                     ].join(" · ")
-                    : save.error}
+                    : saveValidationMessage(save)}
                 </small>
               </button>
-              {ready && (
-                <div className="save-export-control">
-                  <button
-                    aria-label={`Export save ${label}`}
-                    className="save-export-button"
-                    disabled={busy}
-                    onClick={() => void exportSelectedSave(save)}
-                    title={`Export save ${label}`}
-                    type="button"
-                  >
-                    <Download aria-hidden="true" size={18} strokeWidth={2} />
-                  </button>
-                </div>
-              )}
+              <div className="save-export-control">
+                <button
+                  aria-label={`Export save ${label}`}
+                  className="save-export-button"
+                  disabled={busy}
+                  onClick={() => void exportSelectedSave(save)}
+                  title={`Export save ${label}`}
+                  type="button"
+                >
+                  <Download aria-hidden="true" size={18} strokeWidth={2} />
+                </button>
+              </div>
               <div className="save-delete-control">
                 {confirming && !deleting && (
                   <span className="save-delete-confirmation">Sure?</span>

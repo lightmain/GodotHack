@@ -27,14 +27,33 @@ import {
 import { diffProfiles, type ProfileDifference } from "../settings/profile-diff";
 import type { ProfileLoadStatus } from "../settings/profile-store";
 import { PRODUCT_VERSION } from "../version";
+import type {
+  BackupImportPreview,
+  BackupImportSummary,
+} from "../backup/backup-operations";
+import type { FullBackupExport } from "../session/session-manager";
+import { DataManagementSection } from "./DataManagementSection";
 
 interface SettingsScreenProps {
   context?: "home" | "game";
+  diagnosticCount?: number;
   loadStatus: ProfileLoadStatus;
   moduleId: string;
   onApply(profile: BlissHackProfileV1): BlissHackProfileV1;
   onBack(): void;
+  onClearLocalData?: () => Promise<void>;
+  onExportFullBackup?: () => Promise<FullBackupExport>;
+  onImportFullBackup?: (
+    preview: BackupImportPreview,
+    overwriteFileNames: ReadonlySet<string>,
+  ) => Promise<BackupImportSummary>;
+  onPersistenceResult?: (result: string) => void;
+  onPreviewFullBackup?: (
+    bytes: Uint8Array,
+  ) => Promise<BackupImportPreview>;
   profile: BlissHackProfileV1;
+  saveCount?: number;
+  storageAvailable?: boolean;
 }
 
 interface ImportPreview {
@@ -85,11 +104,27 @@ const NUMBER_PAD_OPTIONS: ReadonlyArray<{
  */
 export function SettingsScreen({
   context = "home",
+  diagnosticCount = 0,
   loadStatus,
   moduleId,
   onApply,
   onBack,
+  onClearLocalData = async () => {
+    throw new Error("Local data clearing is unavailable");
+  },
+  onExportFullBackup = async () => {
+    throw new Error("Full backup export is unavailable");
+  },
+  onImportFullBackup = async () => {
+    throw new Error("Full backup import is unavailable");
+  },
+  onPersistenceResult,
+  onPreviewFullBackup = async () => {
+    throw new Error("Full backup preview is unavailable");
+  },
   profile,
+  saveCount = 0,
+  storageAvailable: saveStorageAvailable = true,
 }: SettingsScreenProps) {
   const [draft, setDraft] = useState(() => validateProfile(profile));
   const [confirmation, setConfirmation] = useState<Confirmation>(null);
@@ -453,6 +488,29 @@ export function SettingsScreen({
               </button>
             </div>
           </section>
+        )}
+
+        {!isGameSettings && (
+          <DataManagementSection
+            diagnosticCount={diagnosticCount}
+            dirty={dirty}
+            onApplyProfile={(candidate) => {
+              const saved = onApply(candidate);
+              setDraft(saved);
+              return saved;
+            }}
+            onClearLocalData={onClearLocalData}
+            onExportFullBackup={onExportFullBackup}
+            onImportFullBackup={onImportFullBackup}
+            onPersistenceResult={onPersistenceResult}
+            onPreviewFullBackup={onPreviewFullBackup}
+            profile={profile}
+            profilePresent={loadStatus === "loaded"}
+            saveCount={saveCount}
+            storageAvailable={
+              saveStorageAvailable && loadStatus !== "unavailable"
+            }
+          />
         )}
 
         <footer className="settings-actions">

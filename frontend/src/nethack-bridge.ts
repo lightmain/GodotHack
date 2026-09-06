@@ -286,16 +286,16 @@ export async function validateSaveMetadata(
 ): Promise<SaveValidation> {
   const fileData = storageModule.FS.readFile(path);
   if (typeof fileData === "string") {
-    return { status: "invalid", error: "Save is not binary data" };
+    return { status: "damaged", reason: "not-binary" };
   }
   const validation = await validateSaveBytes(storageModule, fileData);
-  if (validation.status === "invalid") return validation;
+  if (validation.status !== "ready") return validation;
 
   const fileName = path.slice(path.lastIndexOf("/") + 1);
   if (fileName !== `0${validation.identity.playerName}`) {
     return {
-      status: "invalid",
-      error: "Save identity does not match its file name",
+      status: "damaged",
+      reason: "identity-file-name-mismatch",
     };
   }
   return validation;
@@ -323,13 +323,13 @@ export async function validateSaveBytes(
     ));
     if (fingerprintSize <= 0 || fingerprintSize > outputSize) {
       return {
-        status: "invalid",
-        error: "Could not determine the current save format",
+        status: "damaged",
+        reason: "validation-failed",
       };
     }
 
     if (fileData.length < fingerprintSize + 4 + 49) {
-      return { status: "invalid", error: "Save is truncated" };
+      return { status: "damaged", reason: "truncated" };
     }
     for (let index = 0; index < fingerprintSize; index += 1) {
       if (
@@ -337,8 +337,8 @@ export async function validateSaveBytes(
         !== (Number(module.getValue(outputPtr + index, "i8")) & 0xff)
       ) {
         return {
-          status: "invalid",
-          error: "Save is incompatible with this BlissHack build",
+          status: "incompatible",
+          reason: "fingerprint-mismatch",
         };
       }
     }
@@ -349,7 +349,7 @@ export async function validateSaveBytes(
       4,
     ).getInt32(0, true);
     if (identitySize !== 49) {
-      return { status: "invalid", error: "Save identity block is invalid" };
+      return { status: "damaged", reason: "invalid-identity-size" };
     }
     const identity = fileData.subarray(
       fingerprintSize + 4,
@@ -357,13 +357,13 @@ export async function validateSaveBytes(
     );
     const nameEnd = identity.indexOf(0);
     if (nameEnd <= 0) {
-      return { status: "invalid", error: "Save player name is invalid" };
+      return { status: "damaged", reason: "invalid-player-name" };
     }
     const detailsEnd = identity.indexOf(0, nameEnd + 1);
     if (detailsEnd <= nameEnd + 1) {
       return {
-        status: "invalid",
-        error: "Save character identity is invalid",
+        status: "damaged",
+        reason: "invalid-character-identity",
       };
     }
     try {
@@ -378,8 +378,8 @@ export async function validateSaveBytes(
         || details.some((value) => !/^[A-Za-z]{3}$/.test(value))
       ) {
         return {
-          status: "invalid",
-          error: "Save character identity is invalid",
+          status: "damaged",
+          reason: "invalid-character-identity",
         };
       }
       const [role, race, gender, alignment] = details;
@@ -389,8 +389,8 @@ export async function validateSaveBytes(
       };
     } catch {
       return {
-        status: "invalid",
-        error: "Save character identity is invalid",
+        status: "damaged",
+        reason: "invalid-character-identity",
       };
     }
   } finally {

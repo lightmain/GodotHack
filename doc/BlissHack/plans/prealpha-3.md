@@ -402,6 +402,9 @@ perminv_mode
 让玩家能够在清除网站数据、迁移设备或版本不兼容之前取回自己的数据。本阶段
 不改变 raw save，也不承诺当前构建能够继续旧版本存档。
 
+用户已于 2026-09-06 确认按照
+`doc/BlissHack/plans/in-prealpha-3/backup-and-recovery.md` 分步实施。
+
 ### 6.2 不兼容存档救援
 
 - 存档列表继续区分“可以继续”和“不能继续”。
@@ -484,6 +487,31 @@ NetHack 存档很小，本版本不为此引入 ZIP 依赖。
 - 某一个存档导入失败时，其他已成功存档仍可继续，汇总数字准确。
 - 持久存储 API 的 granted、denied、unsupported 和 throw 路径都有测试。
 - 清除操作不会删除其他网站数据，只清除 BlissHack 管理的键和值。
+
+### 6.9 阶段结果
+
+阶段三已于 2026-09-06 完成：
+
+- 正式存档分为 ready、incompatible 和 damaged；任何正式存档都可以原字节
+  导出，不兼容或损坏存档继续禁止 Continue。
+- `.bhbackup` schema 1 完整保存 profile 和全部正式存档，并严格校验 UTF-8、
+  Base64、SHA-256、路径、重复项、数量和大小限制。
+- 完整备份导入先预览配置差异、存档分类和同名冲突，再逐项处理存档并单独确认
+  profile；部分失败不会回滚其他已成功存档。
+- Home Settings 增加浏览器持久存储状态、主动保护、本地数据完整备份与清除
+  操作；游戏内 Settings 不显示这些入口。
+- 清除操作只删除 `/save` 和两个 BlissHack `localStorage` key，普通失败执行
+  补偿，成功后创建干净 game module。
+
+最终验收结果：
+
+- `npm test`：36 个测试文件、354 项断言通过。
+- `npm run lint -- --deny-warnings`：0 warning、0 error。
+- `npm run build`：TypeScript 和 Vite 生产构建通过，运行时三件套校验通过。
+- `npm run test:integration:wasm`：33 项真实 WASM 断言通过。
+- `npm run test:integration:browser`：21 条 Chromium 流程通过。
+- `npm run test:long`：4 条长流程通过。
+- `git diff --check` 通过。
 
 ## 7. 阶段四：多页面游戏锁
 

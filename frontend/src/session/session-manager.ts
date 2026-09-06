@@ -32,8 +32,22 @@ import {
   type StorageModule,
   type StorageService,
 } from "../storage/storage-service";
-import type { NetHackSettingsV1 } from "../settings/profile";
+import type {
+  BlissHackProfileV1,
+  NetHackSettingsV1,
+} from "../settings/profile";
 import { installRuntimeNetHackRc } from "../settings/runtime-nethackrc";
+import { sha256Hex } from "../backup/backup-file";
+import {
+  exportFullBackup as createFullBackup,
+  importFullBackup as importBackupSaves,
+  previewFullBackup as createBackupPreview,
+  BackupRollbackError,
+  type BackupImportPreview,
+  type BackupImportSummary,
+} from "../backup/backup-operations";
+import { BUILD_ID, PRODUCT_VERSION } from "../version";
+import type { LocalDataStore } from "../storage/local-data";
 
 /** A started session and the callback registered for its WASM module. */
 export interface SessionHandle {
@@ -71,6 +85,18 @@ export interface RawSaveExport {
   mimeType: "application/octet-stream";
 }
 
+/** Browser download payload for one complete BlissHack backup. */
+export interface FullBackupExport {
+  text: string;
+  fileName: string;
+  mimeType: "application/json";
+}
+
+/** Completed backup save import and refreshed Home data. */
+export interface FullBackupImportResult extends BackupImportSummary {
+  preparation: HomePreparation;
+}
+
 /** Public controls for the single-module and single-session lifecycle. */
 export interface SessionManager {
   initialize: () => Promise<HomePreparation>;
@@ -87,6 +113,24 @@ export interface SessionManager {
     moduleId: string,
     path: string,
   ) => Promise<RawSaveExport>;
+  exportFullBackup: (
+    moduleId: string,
+    profile: BlissHackProfileV1,
+  ) => Promise<FullBackupExport>;
+  previewFullBackup: (
+    moduleId: string,
+    bytes: Uint8Array,
+  ) => Promise<BackupImportPreview>;
+  importFullBackup: (
+    moduleId: string,
+    preview: BackupImportPreview,
+    overwriteFileNames: ReadonlySet<string>,
+  ) => Promise<FullBackupImportResult>;
+  clearLocalData: (
+    moduleId: string,
+    localData: LocalDataStore,
+    resetLocalState: () => void,
+  ) => Promise<HomePreparation>;
   cleanupSession: (sessionId: string) => Promise<void>;
   reportFatal: (
     area: DiagnosticArea,
@@ -407,7 +451,7 @@ export function createSessionManager(
 
     if (request.kind === "continue") {
       if (request.save.status !== "ready") {
-        throw new Error("Cannot continue an invalid save");
+        throw new Error("Cannot continue an unavailable save");
       }
       const listedSave = owner.preparation.saves.find(
         (save) => save.path === request.save.path && save.status === "ready",
@@ -647,7 +691,7 @@ export function createSessionManager(
   }
 
   /**
-   * Read one listed ready save for a browser download.
+   * Read one listed formal save for a browser download.
    * @param moduleId - module generation which displayed the save.
    * @param path - exact path selected from that module's list.
    */
@@ -668,20 +712,26 @@ export function createSessionManager(
   ): Promise<RawSaveExport> {
     const owner = currentHomeOwner(moduleId, "export");
     const listedSave = owner.preparation.saves.find(
-      (save) => save.path === path && save.status === "ready",
+      (save) => save.path === path,
     );
-    if (!listedSave || listedSave.status !== "ready") {
-      throw new Error("Save is not a listed ready save");
+    if (!listedSave) {
+      throw new Error("Save is not listed by the current Home module");
     }
     let bytes: Uint8Array;
+    let fileName: string;
     try {
       bytes = await owner.storage.exportSave(path);
       assertCurrentHomeModule(owner);
+      fileName = listedSave.status === "ready"
+        ? `${safeDownloadName(listedSave.identity.playerName)}.nhsave`
+        : `blisshack-save-${(await sha256Hex(bytes)).slice(0, 12)}.nhsave`;
     } catch (error) {
       recordDiagnostic({
         level: "warning",
         area: "storage",
-        event: "storage.export_failed",
+        event: listedSave.status === "ready"
+          ? "storage.export_failed"
+          : "storage.rescue_export_failed",
         moduleId,
         detail: { errorName: diagnosticErrorName(error) },
       });
@@ -690,30 +740,227 @@ export function createSessionManager(
     recordDiagnostic({
       level: "info",
       area: "storage",
-      event: "storage.export_completed",
+      event: listedSave.status === "ready"
+        ? "storage.export_completed"
+        : "storage.rescue_export_completed",
       moduleId,
     });
     return {
       bytes,
-      fileName: `${safeDownloadName(listedSave.identity.playerName)}.nhsave`,
+      fileName,
       mimeType: "application/octet-stream",
     };
+  }
+
+  /** Build one complete backup from a fresh formal-save enumeration. */
+  function exportFullBackup(
+    moduleId: string,
+    profile: BlissHackProfileV1,
+  ): Promise<FullBackupExport> {
+    return runHomeOperation(async () => {
+      const owner = currentHomeOwner(moduleId, "backup export");
+      if (!owner.preparation.storageAvailable) {
+        throw new Error("Persistent save storage is unavailable");
+      }
+      try {
+        const text = await createFullBackup(
+          owner.storage,
+          profile,
+          PRODUCT_VERSION,
+          BUILD_ID,
+        );
+        assertCurrentHomeModule(owner);
+        recordDiagnostic({
+          level: "info",
+          area: "storage",
+          event: "backup.export_completed",
+          moduleId,
+          detail: { saveCount: owner.preparation.saves.length },
+        });
+        return {
+          text,
+          fileName: backupDownloadName(new Date()),
+          mimeType: "application/json",
+        };
+      } catch (error) {
+        recordDiagnostic({
+          level: "error",
+          area: "storage",
+          event: "backup.export_failed",
+          moduleId,
+          detail: { errorName: diagnosticErrorName(error) },
+        });
+        throw error;
+      }
+    }, "Another data operation is already active");
+  }
+
+  /** Validate and classify one backup without changing local data. */
+  function previewFullBackup(
+    moduleId: string,
+    bytes: Uint8Array,
+  ): Promise<BackupImportPreview> {
+    return runHomeOperation(async () => {
+      const owner = currentHomeOwner(moduleId, "backup preview");
+      if (!owner.preparation.storageAvailable) {
+        throw new Error("Persistent save storage is unavailable");
+      }
+      try {
+        return await createBackupPreview(owner.storage, bytes);
+      } catch (error) {
+        recordDiagnostic({
+          level: "warning",
+          area: "storage",
+          event: "backup.import_rejected",
+          moduleId,
+          detail: { errorName: diagnosticErrorName(error) },
+        });
+        throw error;
+      }
+    }, "Another data operation is already active");
+  }
+
+  /** Apply the selected save portion of a previously validated backup. */
+  function importFullBackup(
+    moduleId: string,
+    preview: BackupImportPreview,
+    overwriteFileNames: ReadonlySet<string>,
+  ): Promise<FullBackupImportResult> {
+    return runHomeOperation(async () => {
+      const owner = currentHomeOwner(moduleId, "backup import");
+      let summary: BackupImportSummary;
+      try {
+        summary = await importBackupSaves(
+          owner.storage,
+          preview,
+          overwriteFileNames,
+        );
+      } catch (error) {
+        if (error instanceof BackupRollbackError) {
+          await reportFatal(
+            "storage",
+            "backup.import_rollback_failed",
+            error,
+          );
+        }
+        throw error;
+      }
+      assertCurrentHomeModule(owner);
+      const saves = await owner.storage.listSaves();
+      assertCurrentHomeModule(owner);
+      const preparation = { ...owner.preparation, saves };
+      owner.preparation = preparation;
+      options.dispatch({
+        type: "HOME_SAVES_UPDATED",
+        moduleId,
+        saves,
+      });
+      recordDiagnostic({
+        level: summary.failed > 0 ? "warning" : "info",
+        area: "storage",
+        event: "backup.import_completed",
+        moduleId,
+        detail: {
+          importedCount: summary.imported,
+          skippedCount: summary.skipped,
+          failedCount: summary.failed,
+        },
+      });
+      return { ...summary, preparation };
+    }, "Another data operation is already active");
+  }
+
+  /** Clear managed browser data and replace the prepared module generation. */
+  function clearLocalData(
+    moduleId: string,
+    localData: LocalDataStore,
+    resetLocalState: () => void,
+  ): Promise<HomePreparation> {
+    return runHomeOperation(async () => {
+      const owner = currentHomeOwner(moduleId, "clear");
+      let localSnapshot: ReturnType<LocalDataStore["snapshot"]>;
+      try {
+        localSnapshot = localData.snapshot();
+      } catch (error) {
+        recordDiagnostic({
+          level: "error",
+          area: "storage",
+          event: "local_data.clear_failed",
+          moduleId,
+          detail: { errorName: diagnosticErrorName(error) },
+        });
+        throw error;
+      }
+      let saveSnapshot: Awaited<
+        ReturnType<StorageService["clearManagedFiles"]>
+      > | null = null;
+      try {
+        saveSnapshot = await owner.storage.clearManagedFiles();
+        localData.clear();
+        resetLocalState();
+      } catch (error) {
+        if (saveSnapshot) {
+          try {
+            localData.restore(localSnapshot);
+            await owner.storage.restoreManagedFiles(saveSnapshot);
+          } catch (restoreError) {
+            const aggregate = new AggregateError(
+              [error, restoreError],
+              "Could not clear or restore local data",
+            );
+            await reportFatal(
+              "storage",
+              "local_data.clear_rollback_failed",
+              aggregate,
+            );
+            throw aggregate;
+          }
+        }
+        recordDiagnostic({
+          level: "error",
+          area: "storage",
+          event: "local_data.clear_failed",
+          moduleId,
+          detail: { errorName: diagnosticErrorName(error) },
+        });
+        throw error;
+      }
+
+      recordDiagnostic({
+        level: "info",
+        area: "storage",
+        event: "local_data.clear_completed",
+        moduleId,
+        detail: { saveCount: 0 },
+      });
+      owner.closed = true;
+      currentModule = null;
+      initializePromise = null;
+      startPromise = null;
+      const nextModuleId = createModuleId();
+      options.dispatch({
+        type: "LOCAL_DATA_CLEARED",
+        moduleId,
+        nextModuleId,
+      });
+      return prepareModule(nextModuleId);
+    }, "Another data operation is already active");
   }
 
   /** Serialize one Home file operation against session startup. */
   function runHomeOperation<T>(
     operation: () => Promise<T>,
-    busyMessage: string,
+    _busyMessage: string,
   ): Promise<T> {
     if (startPromise) {
       return Promise.reject(
         new Error("Cannot change saves while an active session owns Home"),
       );
     }
-    if (homeOperationPromise) {
-      return Promise.reject(new Error(busyMessage));
-    }
-    const promise = operation();
+    const previous = homeOperationPromise;
+    const promise = previous
+      ? previous.catch(() => undefined).then(operation)
+      : Promise.resolve().then(operation);
     homeOperationPromise = promise;
     void promise.finally(() => {
       if (homeOperationPromise === promise) homeOperationPromise = null;
@@ -1049,6 +1296,10 @@ export function createSessionManager(
     deleteSave,
     importSave,
     exportSave,
+    exportFullBackup,
+    previewFullBackup,
+    importFullBackup,
+    clearLocalData,
     cleanupSession,
     reportFatal,
     recoverHome,
@@ -1072,6 +1323,13 @@ export function createSessionManager(
       withActiveSession(() => submitExtendedCommand(sourceIndex)),
     dismissDisplay: () => withActiveSession(dismissDisplay),
   };
+}
+
+/** Build a filesystem-safe UTC backup download name. */
+function backupDownloadName(date: Date): string {
+  return `blisshack-backup-${
+    date.toISOString().replaceAll(":", "-").replace(".000", "")
+  }.bhbackup`;
 }
 
 /** Remove characters which are unsafe in cross-platform download names. */

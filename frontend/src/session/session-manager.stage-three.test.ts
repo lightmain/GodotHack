@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppAction } from "../app/app-state";
 import { resetGameState } from "../game-state";
 import type { EmscriptenModule } from "../nethack-bridge";
+import type { LocalDataStore } from "../storage/local-data";
 import {
   createSessionManager,
   type SessionManagerOptions,
@@ -60,6 +61,11 @@ interface StageThreeManager {
     fileName: string;
     mimeType: "application/octet-stream";
   }>;
+  clearLocalData(
+    moduleId: string,
+    localData: LocalDataStore,
+    resetLocalState: () => void,
+  ): Promise<unknown>;
 }
 
 const adaIdentity: SaveIdentity = {
@@ -195,7 +201,7 @@ describe("Home raw save operations", () => {
     expect(dispatch).not.toHaveBeenCalled();
   });
 
-  it("exports only a ready save listed by the current Home module", async () => {
+  it("exports a ready save listed by the current Home module", async () => {
     const bytes = Uint8Array.of(0x68, 0xff);
     const storage = {
       initialize: vi.fn(async () => true),
@@ -225,7 +231,82 @@ describe("Home raw save operations", () => {
     await expect(manager.exportSave(
       "module-1",
       "/save/0Unknown",
-    )).rejects.toThrow(/listed|ready/i);
+    )).rejects.toThrow(/listed/i);
     expect(storage.exportSave).toHaveBeenCalledOnce();
+  });
+
+  it("exports unavailable save bytes with a stable hash fallback name", async () => {
+    const unavailable = {
+      path: "/save/0Broken",
+      modifiedAt: null,
+      status: "incompatible",
+      reason: "fingerprint-mismatch",
+    };
+    const bytes = Uint8Array.of(0x00);
+    const storage = {
+      initialize: vi.fn(async () => true),
+      listSaves: vi.fn(async () => [unavailable]),
+      importSave: vi.fn(),
+      exportSave: vi.fn(async () => bytes),
+      readSave: vi.fn(),
+      restoreOriginalSave: vi.fn(),
+      deleteSave: vi.fn(),
+      flush: vi.fn(async () => undefined),
+    };
+    const { manager } = createManager(storage);
+    await manager.initialize();
+
+    await expect(manager.exportSave("module-1", unavailable.path))
+      .resolves.toEqual({
+        bytes,
+        fileName: "blisshack-save-6e340b9cffb3.nhsave",
+        mimeType: "application/octet-stream",
+      });
+  });
+});
+
+describe("local data clearing", () => {
+  it("restores save and local snapshots when exact-key clearing fails", async () => {
+    const snapshot = [{
+      path: "/save/0Ada",
+      bytes: Uint8Array.of(1, 2, 3),
+    }];
+    const storage = {
+      initialize: vi.fn(async () => true),
+      listSaves: vi.fn(async () => [adaSave]),
+      clearManagedFiles: vi.fn(async () => snapshot),
+      restoreManagedFiles: vi.fn(async () => undefined),
+      importSave: vi.fn(),
+      exportSave: vi.fn(),
+      readSave: vi.fn(),
+      restoreOriginalSave: vi.fn(),
+      deleteSave: vi.fn(),
+      flush: vi.fn(async () => undefined),
+    };
+    const localSnapshot = { values: {} };
+    const localData: LocalDataStore = {
+      snapshot: vi.fn(() => localSnapshot),
+      clear: vi.fn(() => {
+        throw new Error("localStorage blocked");
+      }),
+      restore: vi.fn(),
+    };
+    const resetLocalState = vi.fn();
+    const { manager, dispatch } = createManager(storage);
+    await manager.initialize();
+    dispatch.mockClear();
+
+    await expect(manager.clearLocalData(
+      "module-1",
+      localData,
+      resetLocalState,
+    )).rejects.toThrow("localStorage blocked");
+
+    expect(storage.restoreManagedFiles).toHaveBeenCalledWith(snapshot);
+    expect(localData.restore).toHaveBeenCalledWith(localSnapshot);
+    expect(resetLocalState).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: "LOCAL_DATA_CLEARED",
+    }));
   });
 });

@@ -147,9 +147,33 @@ function callbackFor(
  * @returns manager interpreted through the stage-two public contract.
  */
 function createStageTwoManager(
-  options: SessionManagerOptions & Record<string, unknown>,
+  options: Omit<SessionManagerOptions, "createStorageService">
+    & {
+      createStorageService?: (module: EmscriptenModule) => StorageServiceFake;
+    }
+    & Record<string, unknown>,
 ): StageTwoSessionManager {
-  return createSessionManager(options) as unknown as StageTwoSessionManager;
+  const {
+    createStorageService: createStorage,
+    ...managerOptions
+  } = options;
+  return createSessionManager({
+    ...managerOptions,
+    ...(createStorage
+      ? {
+        createStorageService: (module) => ({
+          exportAllSaves: vi.fn(async () => []),
+          validateSave: vi.fn(async () => ({
+            status: "damaged" as const,
+            reason: "validation-failed" as const,
+          })),
+          clearManagedFiles: vi.fn(async () => []),
+          restoreManagedFiles: vi.fn(async () => undefined),
+          ...createStorage(module),
+        }),
+      }
+      : {}),
+  }) as unknown as StageTwoSessionManager;
 }
 
 beforeEach(() => {

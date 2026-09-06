@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useReducer,
@@ -20,6 +21,8 @@ import { GameScreen } from "./screens/GameScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import { createSessionManager } from "./session/session-manager";
 import { useProfileSettings } from "./settings/profile-context";
+import type { BackupImportPreview } from "./backup/backup-operations";
+import { browserLocalDataStore } from "./storage/local-data";
 import type {
   RawSaveImportRequest,
   SaveListEntry,
@@ -35,7 +38,12 @@ function App({
   diagnostics?: DiagnosticLog;
 }) {
   const [state, dispatch] = useReducer(appReducer, initialAppState);
-  const { loadStatus, profile, replaceProfile } = useProfileSettings();
+  const {
+    clearProfile,
+    loadStatus,
+    profile,
+    replaceProfile,
+  } = useProfileSettings();
   const sessionManager = useMemo(
     () => createSessionManager({
       diagnostics,
@@ -147,6 +155,64 @@ function App({
     downloadRawSave(exported);
   }
 
+  /** Export profile and every formal save through the prepared module. */
+  async function exportFullBackup() {
+    if (state.phase !== "settings") {
+      throw new Error("Full backup export is only available from Settings");
+    }
+    return sessionManager.exportFullBackup(state.moduleId, profile);
+  }
+
+  /** Validate one full backup without changing browser data. */
+  async function previewFullBackup(bytes: Uint8Array) {
+    if (state.phase !== "settings") {
+      throw new Error("Full backup import is only available from Settings");
+    }
+    return sessionManager.previewFullBackup(state.moduleId, bytes);
+  }
+
+  /** Apply the save portion of one retained backup preview. */
+  async function importFullBackup(
+    preview: BackupImportPreview,
+    overwriteFileNames: ReadonlySet<string>,
+  ) {
+    if (state.phase !== "settings") {
+      throw new Error("Full backup import is only available from Settings");
+    }
+    return sessionManager.importFullBackup(
+      state.moduleId,
+      preview,
+      overwriteFileNames,
+    );
+  }
+
+  /** Clear only BlissHack-managed browser data and rebuild the Home module. */
+  async function clearLocalData(): Promise<void> {
+    if (state.phase !== "settings") {
+      throw new Error("Local data clearing is only available from Settings");
+    }
+    await sessionManager.clearLocalData(
+      state.moduleId,
+      browserLocalDataStore(),
+      () => {
+        clearProfile();
+        diagnostics.clear();
+      },
+    );
+  }
+
+  /** Record one non-sensitive persistence API outcome. */
+  const recordPersistenceResult = useCallback((result: string) => {
+    diagnostics.record({
+      level: result === "granted" ? "info" : "warning",
+      area: "storage",
+      event: result === "error"
+        ? "storage.persistence_failed"
+        : `storage.persistence_${result}`,
+      moduleId: state.moduleId,
+    });
+  }, [diagnostics, state.moduleId]);
+
   if (state.phase === "booting") {
     return (
       <main className="app-loading" aria-label="BlissHack loading">
@@ -181,13 +247,22 @@ function App({
   }
 
   if (state.phase === "settings") {
+    const preparation = sessionManager.getHomePreparation();
     return (
       <SettingsScreen
+        diagnosticCount={diagnostics.events().length}
         loadStatus={loadStatus}
         moduleId={state.moduleId}
         onApply={replaceProfile}
         onBack={closeSettings}
+        onClearLocalData={clearLocalData}
+        onExportFullBackup={exportFullBackup}
+        onImportFullBackup={importFullBackup}
+        onPersistenceResult={recordPersistenceResult}
+        onPreviewFullBackup={previewFullBackup}
         profile={profile}
+        saveCount={preparation?.saves.length ?? 0}
+        storageAvailable={state.storageAvailable}
       />
     );
   }

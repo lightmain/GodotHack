@@ -1,4 +1,8 @@
 import { importRawSaveTransaction } from "./storage-transaction";
+import {
+  assertFormalSaveFileName,
+  type BackupSaveBytes,
+} from "../backup/backup-file";
 
 /** Largest raw save accepted before allocating or writing imported content. */
 export const MAX_RAW_SAVE_BYTES = 64 * 1024 * 1024;
@@ -39,7 +43,18 @@ export interface SaveIdentity {
 /** Result of validating one save candidate. */
 export type SaveValidation =
   | { status: "ready"; identity: SaveIdentity }
-  | { status: "invalid"; error: string };
+  | { status: "incompatible"; reason: "fingerprint-mismatch" }
+  | {
+    status: "damaged";
+    reason:
+      | "not-binary"
+      | "truncated"
+      | "invalid-identity-size"
+      | "invalid-player-name"
+      | "invalid-character-identity"
+      | "identity-file-name-mismatch"
+      | "validation-failed";
+  };
 
 /** One file displayed by the save picker. */
 export type SaveListEntry = {
@@ -72,6 +87,12 @@ export interface RawSaveSummary {
   modifiedAt: number | null;
 }
 
+/** Exact snapshot of one regular file managed by the /save mount. */
+export interface ManagedStorageFile {
+  path: string;
+  bytes: Uint8Array;
+}
+
 /** Import either completes or pauses before an unapproved replacement. */
 export type RawSaveImportResult =
   | { status: "imported"; path: string }
@@ -90,7 +111,11 @@ export interface StorageService {
   restoreOriginalSave(path: string, bytes: Uint8Array): Promise<void>;
   deleteSave(path: string): Promise<void>;
   exportSave(path: string): Promise<Uint8Array>;
+  exportAllSaves(): Promise<BackupSaveBytes[]>;
+  validateSave(bytes: Uint8Array): Promise<SaveValidation>;
   importSave(request: RawSaveImportRequest): Promise<RawSaveImportResult>;
+  clearManagedFiles(): Promise<ManagedStorageFile[]>;
+  restoreManagedFiles(files: ManagedStorageFile[]): Promise<void>;
   flush(): Promise<void>;
 }
 
@@ -184,12 +209,12 @@ export function createStorageService(
           modifiedAt: fileModificationTime(stat),
           ...validation,
         });
-      } catch (error) {
+      } catch {
         entries.push({
           path,
           modifiedAt: fileModificationTime(stat),
-          status: "invalid",
-          error: errorMessage(error),
+          status: "damaged",
+          reason: "validation-failed",
         });
       }
     }
@@ -239,6 +264,28 @@ export function createStorageService(
     return readSave(path);
   }
 
+  /** Read every formal save, including incompatible and damaged entries. */
+  async function exportAllSaves(): Promise<BackupSaveBytes[]> {
+    const saves = await listSaves();
+    const result: BackupSaveBytes[] = [];
+    for (const save of [...saves].sort((left, right) =>
+      left.path < right.path ? -1 : left.path > right.path ? 1 : 0)) {
+      result.push({
+        fileName: save.path.slice(`${SAVE_DIRECTORY}/`.length),
+        bytes: await readSave(save.path),
+      });
+    }
+    return result;
+  }
+
+  /** Classify detached raw bytes using the current game module. */
+  function validateSave(bytes: Uint8Array): Promise<SaveValidation> {
+    if (!options.validateSaveBytes) {
+      throw new Error("Raw save validation is unavailable");
+    }
+    return options.validateSaveBytes(module, bytes);
+  }
+
   /** Validate and transactionally persist one uploaded raw save. */
   async function importSave(
     request: RawSaveImportRequest,
@@ -257,8 +304,8 @@ export function createStorageService(
       throw new Error("Raw save import validation is unavailable");
     }
     const validation = await options.validateSaveBytes(module, request.bytes);
-    if (validation.status === "invalid") {
-      throw new Error(validation.error);
+    if (validation.status !== "ready") {
+      throw new Error(saveValidationMessage(validation));
     }
 
     const path = `${SAVE_DIRECTORY}/0${validation.identity.playerName}`;
@@ -268,9 +315,9 @@ export function createStorageService(
         module,
         path,
       );
-      if (existingValidation.status === "invalid") {
+      if (existingValidation.status !== "ready") {
         throw new Error(
-          "An invalid same-name save already exists; delete it before importing",
+          "An unavailable same-name save already exists; delete it before importing",
         );
       }
       return {
@@ -301,6 +348,62 @@ export function createStorageService(
     return persistent ? enqueueSync(false) : Promise.resolve();
   }
 
+  /** Remove all regular files in the dedicated mount and return a rollback copy. */
+  async function clearManagedFiles(): Promise<ManagedStorageFile[]> {
+    const snapshot = snapshotManagedFiles();
+    try {
+      for (const file of snapshot) module.FS.unlink(file.path);
+      await flush();
+    } catch (clearError) {
+      try {
+        await restoreManagedFiles(snapshot);
+      } catch (restoreError) {
+        throw new AggregateError(
+          [clearError, restoreError],
+          "Could not clear or restore local save data",
+        );
+      }
+      throw clearError;
+    }
+    return snapshot;
+  }
+
+  /** Replace current regular mount files with an earlier exact snapshot. */
+  async function restoreManagedFiles(
+    files: ManagedStorageFile[],
+  ): Promise<void> {
+    for (const fileName of module.FS.readdir(SAVE_DIRECTORY)) {
+      if (fileName === "." || fileName === "..") continue;
+      const path = `${SAVE_DIRECTORY}/${fileName}`;
+      const stat = module.FS.stat(path);
+      if (module.FS.isFile(stat.mode)) module.FS.unlink(path);
+    }
+    for (const file of files) {
+      if (!file.path.startsWith(`${SAVE_DIRECTORY}/`)) {
+        throw new Error("Managed storage snapshot contains an invalid path");
+      }
+      module.FS.writeFile(file.path, file.bytes);
+    }
+    await flush();
+  }
+
+  /** Copy every regular direct child owned by the dedicated /save mount. */
+  function snapshotManagedFiles(): ManagedStorageFile[] {
+    const files: ManagedStorageFile[] = [];
+    for (const fileName of module.FS.readdir(SAVE_DIRECTORY)) {
+      if (fileName === "." || fileName === "..") continue;
+      const path = `${SAVE_DIRECTORY}/${fileName}`;
+      const stat = module.FS.stat(path);
+      if (!module.FS.isFile(stat.mode)) continue;
+      const bytes = module.FS.readFile(path);
+      if (typeof bytes === "string") {
+        throw new Error(`Expected binary storage data at ${path}`);
+      }
+      files.push({ path, bytes: bytes.slice() });
+    }
+    return files;
+  }
+
   return {
     initialize,
     listSaves,
@@ -308,7 +411,11 @@ export function createStorageService(
     restoreOriginalSave,
     deleteSave,
     exportSave,
+    exportAllSaves,
+    validateSave,
     importSave,
+    clearManagedFiles,
+    restoreManagedFiles,
     flush,
   };
 }
@@ -338,9 +445,12 @@ function validTimestamp(value: number | null | undefined): number | null {
 
 /** Return whether a direct /save entry can be a normal WASM save file. */
 function isSaveCandidate(fileName: string): boolean {
-  return /^0[^/]{1,31}$/.test(fileName)
-    && !fileName.startsWith("0.")
-    && !TEMPORARY_SUFFIX.test(fileName);
+  try {
+    assertFormalSaveFileName(fileName);
+    return !TEMPORARY_SUFFIX.test(fileName);
+  } catch {
+    return false;
+  }
 }
 
 /** Reject paths outside the direct save directory. */
@@ -351,18 +461,20 @@ function assertSavePath(path: string): void {
   }
 }
 
-/** Sort ready entries by player name and invalid entries by path. */
+/** Sort ready entries by player name and unavailable entries by path. */
 function compareSaveEntries(left: SaveListEntry, right: SaveListEntry): number {
   const leftName = left.status === "ready" ? left.identity.playerName : left.path;
   const rightName = right.status === "ready" ? right.identity.playerName : right.path;
   return leftName.localeCompare(rightName);
 }
 
-/** Normalize an unknown failure without exposing file contents. */
-function errorMessage(error: unknown): string {
-  return error instanceof Error
-    ? error.message
-    : "Save is incompatible or damaged";
+/** Return stable user-facing text for a save which cannot be continued. */
+export function saveValidationMessage(
+  validation: Exclude<SaveValidation, { status: "ready" }>,
+): string {
+  return validation.status === "incompatible"
+    ? "Save is incompatible with this BlissHack build"
+    : "Save is damaged or unrecognized";
 }
 
 /** Convert callback-style syncfs into an awaitable operation. */

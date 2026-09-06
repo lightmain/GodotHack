@@ -15,6 +15,9 @@ function memoryStorage(initial?: string): DiagnosticStorage & {
   return {
     values,
     getItem: vi.fn((key: string) => values.get(key) ?? null),
+    removeItem: vi.fn((key: string) => {
+      values.delete(key);
+    }),
     setItem: vi.fn((key: string, value: string) => {
       values.set(key, value);
     }),
@@ -39,6 +42,22 @@ function deterministicLog(storage: DiagnosticStorage | null = null) {
 }
 
 describe("diagnostic log retention", () => {
+  it("clears persisted and in-memory events as a new log generation", () => {
+    const storage = memoryStorage();
+    const log = deterministicLog(storage);
+    log.record({ level: "info", area: "app", event: "before.clear" });
+
+    log.clear();
+
+    expect(log.events()).toEqual([]);
+    expect(storage.values.has(DIAGNOSTIC_STORAGE_KEY)).toBe(false);
+    expect(log.record({
+      level: "info",
+      area: "app",
+      event: "after.clear",
+    }).sequence).toBe(1);
+  });
+
   it("retains the newest 500 events with stable sequence numbers", () => {
     const log = deterministicLog(memoryStorage());
 

@@ -14,6 +14,9 @@ function memoryStorage(initial?: string): ProfileStorage & {
   return {
     values,
     getItem: vi.fn((key: string) => values.get(key) ?? null),
+    removeItem: vi.fn((key: string) => {
+      values.delete(key);
+    }),
     setItem: vi.fn((key: string, value: string) => {
       values.set(key, value);
     }),
@@ -77,6 +80,16 @@ describe("profile store loading", () => {
 });
 
 describe("profile store replacement", () => {
+  it("clears only the profile key and returns fresh defaults", () => {
+    const storage = memoryStorage(JSON.stringify(createDefaultProfile()));
+    storage.values.set("unrelated", "keep");
+    const store = createProfileStore(storage);
+
+    expect(store.clear()).toEqual(createDefaultProfile());
+    expect(storage.values.has(PROFILE_STORAGE_KEY)).toBe(false);
+    expect(storage.values.get("unrelated")).toBe("keep");
+  });
+
   it("validates and replaces the complete record with one setItem", () => {
     const storage = memoryStorage();
     const store = createProfileStore(storage);

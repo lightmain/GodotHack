@@ -101,6 +101,23 @@ describe("appReducer legal transitions", () => {
     })).toEqual(home);
   });
 
+  it("replaces the prepared module after local data is cleared", () => {
+    const settings = appReducer(homeState(), {
+      type: "SETTINGS_OPENED",
+      moduleId: "module-1",
+    });
+
+    expect(appReducer(settings, {
+      type: "LOCAL_DATA_CLEARED",
+      moduleId: "module-1",
+      nextModuleId: "module-2",
+    })).toEqual({
+      phase: "booting",
+      moduleId: "module-2",
+      status: "loading-module",
+    });
+  });
+
   it("keeps the save picker open for importing when no ready saves remain", () => {
     const opened = appReducer(homeState(), {
       type: "SAVE_PICKER_OPENED",
@@ -113,8 +130,8 @@ describe("appReducer legal transitions", () => {
       saves: [{
         path: "/save/0Broken",
         modifiedAt: null,
-        status: "invalid",
-        error: "Save is incompatible or damaged",
+        status: "damaged",
+        reason: "truncated",
       }],
     })).toEqual({
       phase: "home",

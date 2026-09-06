@@ -2,8 +2,8 @@
 
 ## 1. 文档状态
 
-本文是 prealpha-3 阶段三的设计评审和分步实施计划，当前状态为**等待用户
-确认**。确认前不实现完整备份、持久存储申请或清除本地数据。
+本文是 prealpha-3 阶段三的设计评审和分步实施计划。用户已于 2026-09-06
+确认按本文开始开发，阶段三实现已于同日完成。
 
 本文以已经完成的阶段二实现为基线。阶段三不修改 NetHack raw save 格式，
 不增加新的 game module 生命周期，也不修改 C、shim 或 WebAssembly 产物。
@@ -239,7 +239,7 @@ blisshack-backup-YYYY-MM-DDTHH-mm-ssZ.bhbackup
 
 - JSON 文件最多 96 MiB。
 - 最多 100 个存档。
-- 每个解码后存档最多 64 MiB，且不能为空。
+- 每个解码后存档最多 64 MiB；0-byte 正式文件作为 damaged 存档保留。
 - 全部解码后存档合计最多 64 MiB。
 - `productVersion` 最多 64 个 ASCII 可打印字符。
 - `buildId` 最多 128 个 ASCII 可打印字符。
@@ -528,6 +528,7 @@ backup.export_completed
 backup.export_failed
 backup.import_rejected
 backup.import_completed
+backup.import_rollback_failed
 storage.persistence_granted
 storage.persistence_denied
 storage.persistence_unsupported
@@ -768,3 +769,32 @@ git diff --check
 7. 清除确认文本为 `CLEAR BLISSHACK DATA`，并采用第 10.3 节的补偿流程。
 8. 所有阶段三数据管理入口放在 Home Settings；save popover 保留单个 raw
    save 的导入、导出和删除。
+
+## 18. 实施结果
+
+阶段三已按照本文完成：
+
+- 正式存档使用 `ready`、`incompatible` 和 `damaged` 三态；后两种存档保持
+  Continue 禁用，但可以原字节导出并使用稳定 SHA-256 前缀文件名。
+- `.bhbackup` schema 1 支持完整 profile、全部正式存档、Base64、SHA-256、
+  固定排序、严格大小限制和不可信输入校验。
+- 完整备份导入提供 profile 差异、存档分类和逐项覆盖预览；存档逐项处理并
+  汇总 imported、skipped 和 failed，最后单独应用 profile。
+- Settings 显示持久存储状态，并只在玩家点击后调用 `persist()`。
+- 清除流程只操作 `/save` 和两个明确的 `localStorage` key；普通失败执行
+  文件和 key 补偿，成功后清空内存状态并创建新 module。
+- 数据 modal 使用 portal、初始焦点、焦点循环、Esc 取消和触发按钮焦点恢复；
+  游戏内 Settings 不显示数据管理入口。
+- 未修改 C、shim、`nethack.js`、`nethack.wasm` 或运行时校验记录。
+
+最终自动验收：
+
+- `npm run lint -- --deny-warnings`：0 warning、0 error。
+- `npm test`：36 个测试文件、354 项断言通过。
+- `npm run build`：TypeScript、Vite 和运行时三件套校验通过。
+- `npm run test:integration:wasm`：33 项真实 WASM 断言通过。
+- `npm run test:integration:browser`：21 条 Chromium 流程通过。
+- `npm run test:long`：4 条长流程通过。
+- 完整备份清除与恢复、不兼容存档救援下载均使用真实浏览器和 IDBFS 验证。
+- Settings Data 区段和清除 modal 已检查窄视口布局、初始焦点和遮罩关系。
+- `git diff --check` 通过。

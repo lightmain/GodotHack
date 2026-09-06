@@ -1049,6 +1049,35 @@ describe("files, history, extended commands, and lifecycle", () => {
     expect(harness.module.FS.readFile).not.toHaveBeenCalled();
   });
 
+  it("distinguishes incompatible fingerprints from truncated saves", async () => {
+    const fingerprint = Uint8Array.of(104, 0);
+    vi.mocked(harness.module.ccall).mockImplementation((
+      name,
+      _returnType,
+      _argumentTypes,
+      arguments_,
+    ) => {
+      if (name !== "shim_graphics_get_save_fingerprint") return undefined;
+      harness.memory.set(fingerprint, arguments_[0] as number);
+      return fingerprint.length;
+    });
+
+    await expect(validateSaveBytes(
+      harness.module as never,
+      Uint8Array.from({ length: 55 }, (_, index) => index === 0 ? 103 : 0),
+    )).resolves.toEqual({
+      status: "incompatible",
+      reason: "fingerprint-mismatch",
+    });
+    await expect(validateSaveBytes(
+      harness.module as never,
+      Uint8Array.of(104),
+    )).resolves.toEqual({
+      status: "damaged",
+      reason: "truncated",
+    });
+  });
+
   it("parses the WASM extcmdlist and returns the selected source index", async () => {
     const listPtr = 0x1000;
     harness.writeString(0x1800, "adjust");

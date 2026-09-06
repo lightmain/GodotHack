@@ -8,7 +8,7 @@ import {
 } from "./SavePickerPopover";
 
 describe("SavePickerPopover", () => {
-  it("renders ready saves and keeps invalid saves disabled", () => {
+  it("renders ready saves and keeps unavailable saves disabled", () => {
     const html = renderToStaticMarkup(createElement(SavePickerPopover, {
       moduleId: "module-1",
       onContinue: vi.fn(),
@@ -30,8 +30,8 @@ describe("SavePickerPopover", () => {
         {
           path: "/save/0Broken",
           modifiedAt: null,
-          status: "invalid",
-          error: "Save is incompatible or damaged",
+          status: "damaged",
+          reason: "truncated",
         },
       ],
     }));
@@ -46,7 +46,7 @@ describe("SavePickerPopover", () => {
     expect(html).toMatch(/Import save/i);
     expect(html).toMatch(/type="file"/i);
     expect(html).toMatch(/aria-label="Export save Ada"/);
-    expect(html).not.toMatch(/aria-label="Export save Broken"/);
+    expect(html).toMatch(/aria-label="Export save Broken"/);
     expect(html).toMatch(/aria-label="Delete save Ada"/);
     expect(html).toMatch(/aria-label="Delete save Broken"/);
     expect(html.indexOf('aria-label="Delete save Ada"'))

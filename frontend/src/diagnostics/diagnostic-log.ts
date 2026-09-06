@@ -19,8 +19,11 @@ export interface DiagnosticDetail {
   buildId?: string;
   callback?: string;
   errorName?: string;
+  failedCount?: number;
+  importedCount?: number;
   inputKind?: string | null;
   saveCount?: number;
+  skippedCount?: number;
   stack?: string;
   storageAvailable?: boolean;
 }
@@ -64,6 +67,7 @@ export interface DiagnosticExport {
 /** Minimum browser storage contract needed by the diagnostic log. */
 export interface DiagnosticStorage {
   getItem(key: string): string | null;
+  removeItem?(key: string): void;
   setItem(key: string, value: string): void;
 }
 
@@ -94,6 +98,7 @@ export interface DiagnosticLog {
     error: unknown,
   ): { errorId: string; event: DiagnosticEvent };
   events(): DiagnosticEvent[];
+  clear(): void;
   exportData(): DiagnosticExport;
   exportJson(): string;
 }
@@ -193,6 +198,17 @@ export function createDiagnosticLog(
     return records.map(cloneEvent);
   }
 
+  /** Delete prior persisted and in-memory events after explicit user confirmation. */
+  function clear(): void {
+    records = [];
+    nextSequence = 1;
+    if (!storage) return;
+    if (!storage.removeItem) {
+      throw new Error("Diagnostic storage cannot be cleared");
+    }
+    storage.removeItem(DIAGNOSTIC_STORAGE_KEY);
+  }
+
   /** Build the versioned portable diagnostic document. */
   function exportData(): DiagnosticExport {
     return {
@@ -213,6 +229,7 @@ export function createDiagnosticLog(
     record,
     recordFatal,
     events,
+    clear,
     exportData,
     exportJson: () => JSON.stringify(exportData(), null, 2),
   };
@@ -329,6 +346,12 @@ function normalizeDetail(value: DiagnosticDetail | undefined):
   }
   const saveCount = finiteNonNegativeInteger(value.saveCount);
   if (saveCount !== null) detail.saveCount = saveCount;
+  const importedCount = finiteNonNegativeInteger(value.importedCount);
+  if (importedCount !== null) detail.importedCount = importedCount;
+  const skippedCount = finiteNonNegativeInteger(value.skippedCount);
+  if (skippedCount !== null) detail.skippedCount = skippedCount;
+  const failedCount = finiteNonNegativeInteger(value.failedCount);
+  if (failedCount !== null) detail.failedCount = failedCount;
   if (typeof value.stack === "string") {
     const stack = sanitizeStack(value.stack);
     if (stack) detail.stack = stack;

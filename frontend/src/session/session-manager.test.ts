@@ -161,10 +161,17 @@ function createHarness(
       restoreOriginalSave: vi.fn(async () => undefined),
       deleteSave: vi.fn(async () => undefined),
       exportSave: vi.fn(async () => new Uint8Array()),
+      exportAllSaves: vi.fn(async () => []),
+      validateSave: vi.fn(async () => ({
+        status: "damaged" as const,
+        reason: "validation-failed" as const,
+      })),
       importSave: vi.fn(async () => ({
         status: "imported" as const,
         path: "/save/0Ada",
       })),
+      clearManagedFiles: vi.fn(async () => []),
+      restoreManagedFiles: vi.fn(async () => undefined),
       flush: vi.fn(async () => undefined),
     }),
     diagnostics,

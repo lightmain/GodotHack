@@ -5,6 +5,7 @@ import type { ProfileLoadStatus } from "./profile-store";
 export interface ProfileContextValue {
   profile: BlissHackProfileV1;
   loadStatus: ProfileLoadStatus;
+  clearProfile(): BlissHackProfileV1;
   replaceProfile(profile: BlissHackProfileV1): BlissHackProfileV1;
 }
 
