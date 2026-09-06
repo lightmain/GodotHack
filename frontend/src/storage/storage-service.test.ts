@@ -21,6 +21,7 @@ type MetadataValidator = (
 /** Stage-two storage service behavior exercised without a browser IDBFS. */
 interface StorageServiceContract {
   initialize(): Promise<boolean>;
+  refreshFromPersistent(): Promise<SaveListEntry[]>;
   listSaves(): Promise<SaveListEntry[]>;
   readSave(path: string): Promise<Uint8Array>;
   restoreOriginalSave(path: string, bytes: Uint8Array): Promise<void>;
@@ -136,6 +137,36 @@ describe("storage service initialization", () => {
 });
 
 describe("storage service synchronization queue", () => {
+  it("repopulates IDBFS before returning a refreshed save list", async () => {
+    const harness = createStorageModuleHarness();
+    const validateSaveMetadata = vi.fn<MetadataValidator>(
+      async () => ({
+        status: "ready",
+        identity: { playerName: "Ada" },
+      }),
+    );
+    const service = await createService(harness, validateSaveMetadata);
+    const initialization = service.initialize();
+    harness.syncRequests[0].complete();
+    await initialization;
+    harness.files.set("/save/0Ada", Uint8Array.of(1));
+
+    const refresh = service.refreshFromPersistent();
+    await vi.waitFor(() => {
+      expect(harness.syncRequests).toHaveLength(2);
+    });
+    expect(harness.syncRequests.map(({ populate }) => populate)).toEqual([
+      true,
+      true,
+    ]);
+    harness.syncRequests[1].complete();
+
+    await expect(refresh).resolves.toEqual([
+      expect.objectContaining({ path: "/save/0Ada", status: "ready" }),
+    ]);
+    expect(validateSaveMetadata).toHaveBeenCalledOnce();
+  });
+
   it("serializes populate and concurrent flush calls through one queue", async () => {
     const harness = createStorageModuleHarness();
     const service = await createService(harness);

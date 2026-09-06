@@ -81,6 +81,7 @@ export type SaveBytesValidator = (
 /** User-approved request to import one raw save. */
 export interface RawSaveImportRequest {
   bytes: Uint8Array;
+  expectedExisting?: RawSaveSummary;
   modifiedAt: number | null;
   overwrite: boolean;
 }
@@ -110,6 +111,7 @@ export type RawSaveImportResult =
 /** Public storage operations owned by one prepared game module. */
 export interface StorageService {
   initialize(): Promise<boolean>;
+  refreshFromPersistent(): Promise<SaveListEntry[]>;
   listSaves(): Promise<SaveListEntry[]>;
   readSave(path: string): Promise<Uint8Array>;
   restoreOriginalSave(path: string, bytes: Uint8Array): Promise<void>;
@@ -188,6 +190,17 @@ export function createStorageService(
       () => false,
     );
     return initializePromise;
+  }
+
+  /**
+   * Replace this module's mounted save view with the latest durable IDBFS state.
+   * @returns the freshly enumerated formal saves, or an empty list without IDBFS.
+   */
+  async function refreshFromPersistent(): Promise<SaveListEntry[]> {
+    const available = await initialize();
+    if (!available) return [];
+    await enqueueSync(true);
+    return listSaves();
   }
 
   async function listSaves(): Promise<SaveListEntry[]> {
@@ -309,7 +322,7 @@ export function createStorageService(
 
     const path = `${SAVE_DIRECTORY}/0${validation.identity.playerName}`;
     assertSavePath(path);
-    if (module.FS.analyzePath(path).exists && !request.overwrite) {
+    if (module.FS.analyzePath(path).exists) {
       const existingValidation = await options.validateSaveMetadata(
         module,
         path,
@@ -319,18 +332,27 @@ export function createStorageService(
           "An unavailable same-name save already exists; delete it before importing",
         );
       }
-      return {
-        status: "conflict",
-        path,
-        existing: {
-          identity: existingValidation.identity,
-          modifiedAt: statModificationTime(module.FS, path),
-        },
-        incoming: {
-          identity: validation.identity,
-          modifiedAt: validTimestamp(request.modifiedAt),
-        },
+      const existing = {
+        identity: existingValidation.identity,
+        modifiedAt: statModificationTime(module.FS, path),
       };
+      if (
+        !request.overwrite
+        || (
+          request.expectedExisting !== undefined
+          && !sameSaveSummary(existing, request.expectedExisting)
+        )
+      ) {
+        return {
+          status: "conflict",
+          path,
+          existing,
+          incoming: {
+            identity: validation.identity,
+            modifiedAt: validTimestamp(request.modifiedAt),
+          },
+        };
+      }
     }
 
     await importRawSaveTransaction({
@@ -422,6 +444,7 @@ export function createStorageService(
 
   return {
     initialize,
+    refreshFromPersistent,
     listSaves,
     readSave,
     restoreOriginalSave,
@@ -434,6 +457,19 @@ export function createStorageService(
     restoreManagedFiles,
     flush,
   };
+}
+
+/** Compare the metadata bound to one explicit raw-save overwrite approval. */
+function sameSaveSummary(
+  current: RawSaveSummary,
+  expected: RawSaveSummary,
+): boolean {
+  return current.modifiedAt === expected.modifiedAt
+    && current.identity.playerName === expected.identity.playerName
+    && current.identity.role === expected.identity.role
+    && current.identity.race === expected.identity.race
+    && current.identity.gender === expected.identity.gender
+    && current.identity.alignment === expected.identity.alignment;
 }
 
 /** Read a file's modification timestamp without inventing missing metadata. */

@@ -16,6 +16,14 @@ import {
   type SessionManagerOptions,
 } from "./session-manager";
 import { createDefaultProfile } from "../settings/profile";
+import {
+  GameLockConflictError,
+  type GameLock,
+} from "../concurrency/game-lock";
+import type {
+  SaveListEntry,
+  StorageService,
+} from "../storage/storage-service";
 
 interface ModuleHarness {
   module: EmscriptenModule;
@@ -156,6 +164,7 @@ function createHarness(
     createSessionId: () => `session-${++sessionId}`,
     createStorageService: () => ({
       initialize: vi.fn(async () => true),
+      refreshFromPersistent: vi.fn(async () => []),
       listSaves: vi.fn(async () => []),
       readSave: vi.fn(async () => new Uint8Array()),
       restoreOriginalSave: vi.fn(async () => undefined),
@@ -192,6 +201,199 @@ beforeEach(() => {
     },
     pointers: {},
   };
+});
+
+describe("cross-page game lock lifecycle", () => {
+  it("locks and refreshes before reading one exported save", async () => {
+    const module = createModuleHarness("module");
+    const save: SaveListEntry = {
+      path: "/save/0Ada",
+      modifiedAt: 1,
+      status: "ready",
+      identity: {
+        playerName: "Ada",
+        role: "Wiz",
+        race: "Hum",
+        gender: "Fem",
+        alignment: "Neu",
+      },
+    };
+    let held = false;
+    const requestedOperations: string[] = [];
+    async function runExclusive<T>(
+      _operation: Parameters<GameLock["runExclusive"]>[0],
+      callback: () => Promise<T>,
+    ): Promise<T> {
+      requestedOperations.push(_operation);
+      held = true;
+      try {
+        return await callback();
+      } finally {
+        held = false;
+      }
+    }
+    const gameLock: GameLock = {
+      supported: true,
+      acquireLease: vi.fn(),
+      runExclusive,
+    };
+    const refreshFromPersistent = vi.fn(async () => {
+      expect(held).toBe(true);
+      return [save];
+    });
+    const exportSave = vi.fn(async () => {
+      expect(held).toBe(true);
+      return Uint8Array.of(1);
+    });
+    const storage = {
+      initialize: vi.fn(async () => true),
+      refreshFromPersistent,
+      listSaves: vi.fn(async () => [save]),
+      readSave: vi.fn(async () => new Uint8Array()),
+      restoreOriginalSave: vi.fn(async () => undefined),
+      deleteSave: vi.fn(async () => undefined),
+      exportSave,
+      exportAllSaves: vi.fn(async () => []),
+      validateSave: vi.fn(async () => ({
+        status: "ready" as const,
+        identity: save.identity,
+      })),
+      importSave: vi.fn(async () => ({
+        status: "imported" as const,
+        path: save.path,
+      })),
+      clearManagedFiles: vi.fn(async () => []),
+      restoreManagedFiles: vi.fn(async () => undefined),
+      flush: vi.fn(async () => undefined),
+    } satisfies StorageService;
+    const { manager } = createHarness(
+      [module.module],
+      undefined,
+      { createStorageService: () => storage, gameLock },
+    );
+    await manager.initialize();
+
+    await manager.exportSave("module-1", save.path);
+
+    expect(requestedOperations).toEqual(["raw-save-export"]);
+    expect(refreshFromPersistent).toHaveBeenCalledOnce();
+    expect(exportSave).toHaveBeenCalledOnce();
+    expect(held).toBe(false);
+  });
+
+  it("does not create a session or call main when another page owns the lock", async () => {
+    const module = createModuleHarness("module");
+    const gameLock: GameLock = {
+      supported: true,
+      acquireLease: vi.fn(async () => {
+        throw new GameLockConflictError("new-game");
+      }),
+      runExclusive: vi.fn(),
+    };
+    const { manager, dispatch } = createHarness(
+      [module.module],
+      undefined,
+      { gameLock },
+    );
+    await manager.initialize();
+    dispatch.mockClear();
+
+    await expect(manager.startSession()).rejects.toBeInstanceOf(
+      GameLockConflictError,
+    );
+    expect(module.module.ccall).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "SESSION_CREATED" }),
+    );
+  });
+
+  it("refreshes after acquisition and releases only after session cleanup", async () => {
+    const module = createModuleHarness("module");
+    const release = vi.fn(async () => undefined);
+    const gameLock: GameLock = {
+      supported: true,
+      acquireLease: vi.fn(async () => ({ release })),
+      runExclusive: vi.fn(),
+    };
+    const refreshFromPersistent = vi.fn(async () => []);
+    const storage = {
+      initialize: vi.fn(async () => true),
+      refreshFromPersistent,
+      listSaves: vi.fn(async () => []),
+      readSave: vi.fn(async () => new Uint8Array()),
+      restoreOriginalSave: vi.fn(async () => undefined),
+      deleteSave: vi.fn(async () => undefined),
+      exportSave: vi.fn(async () => new Uint8Array()),
+      exportAllSaves: vi.fn(async () => []),
+      validateSave: vi.fn(async () => ({
+        status: "damaged" as const,
+        reason: "validation-failed" as const,
+      })),
+      importSave: vi.fn(async () => ({
+        status: "imported" as const,
+        path: "/save/0Ada",
+      })),
+      clearManagedFiles: vi.fn(async () => []),
+      restoreManagedFiles: vi.fn(async () => undefined),
+      flush: vi.fn(async () => undefined),
+    } satisfies StorageService;
+    const { manager } = createHarness(
+      [module.module],
+      undefined,
+      {
+        createStorageService: () => storage,
+        gameLock,
+      },
+    );
+    await manager.initialize();
+
+    const session = await manager.startSession();
+    expect(refreshFromPersistent).toHaveBeenCalledOnce();
+    expect(refreshFromPersistent.mock.invocationCallOrder[0]).toBeLessThan(
+      (module.module.ccall as ReturnType<typeof vi.fn>)
+        .mock.invocationCallOrder.at(-1) as number,
+    );
+    expect(release).not.toHaveBeenCalled();
+
+    await manager.cleanupSession(session.sessionId);
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("does not flush an idle prepared module during disposal", async () => {
+    const module = createModuleHarness("module");
+    const flush = vi.fn(async () => undefined);
+    const { manager } = createHarness(
+      [module.module],
+      undefined,
+      {
+        createStorageService: () => ({
+          initialize: vi.fn(async () => true),
+          refreshFromPersistent: vi.fn(async () => []),
+          listSaves: vi.fn(async () => []),
+          readSave: vi.fn(async () => new Uint8Array()),
+          restoreOriginalSave: vi.fn(async () => undefined),
+          deleteSave: vi.fn(async () => undefined),
+          exportSave: vi.fn(async () => new Uint8Array()),
+          exportAllSaves: vi.fn(async () => []),
+          validateSave: vi.fn(async () => ({
+            status: "damaged" as const,
+            reason: "validation-failed" as const,
+          })),
+          importSave: vi.fn(async () => ({
+            status: "imported" as const,
+            path: "/save/0Ada",
+          })),
+          clearManagedFiles: vi.fn(async () => []),
+          restoreManagedFiles: vi.fn(async () => undefined),
+          flush,
+        }),
+      },
+    );
+    await manager.initialize();
+
+    await manager.dispose();
+    expect(flush).not.toHaveBeenCalled();
+  });
 });
 
 describe("session creation and startup", () => {

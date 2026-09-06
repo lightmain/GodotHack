@@ -17,6 +17,12 @@ export async function openHome(page: Page, marker: string): Promise<void> {
   await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Settings" })).toBeEnabled();
   await expect(page.getByRole("textbox", { name: "Who are you?" })).toHaveCount(0);
+  await expect(page.getByText(
+    "This browser cannot protect games opened in multiple BlissHack pages.",
+  )).toHaveCount(0);
+  await expect(page.getByRole("alertdialog", {
+    name: "BlissHack is busy in another page",
+  })).toHaveCount(0);
 }
 
 /**

@@ -124,7 +124,7 @@ const AUTO_ACCELERATORS =
 interface GameScreenProps {
   loadStatus: ProfileLoadStatus;
   moduleId: string;
-  onApplyProfile(profile: BlissHackProfileV1): BlissHackProfileV1;
+  onApplyProfile(profile: BlissHackProfileV1): Promise<BlissHackProfileV1>;
   profile: BlissHackProfileV1;
 }
 
@@ -161,11 +161,10 @@ export function GameScreen({
     ) {
       return;
     }
-    try {
-      onApplyProfile(profileWithRuntimeSettings(profile, current));
-    } catch {
-      // The current core value remains authoritative for this session.
-    }
+    void onApplyProfile(profileWithRuntimeSettings(profile, current))
+      .catch(() => {
+        // The current core value remains authoritative for this session.
+      });
   }, [
     onApplyProfile,
     profile,
@@ -216,8 +215,10 @@ export function GameScreen({
   ]);
 
   /** Persist game settings, queue the dynamic subset, and advance one safe boundary. */
-  function applyGameProfile(candidate: BlissHackProfileV1): BlissHackProfileV1 {
-    const saved = onApplyProfile(candidate);
+  async function applyGameProfile(
+    candidate: BlissHackProfileV1,
+  ): Promise<BlissHackProfileV1> {
+    const saved = await onApplyProfile(candidate);
     queueRuntimeSettings(saved.nethack);
     sendKey(27);
     return saved;

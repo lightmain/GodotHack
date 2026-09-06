@@ -9,7 +9,7 @@ function renderSettings(loadStatus: ProfileLoadStatus = "loaded"): string {
   return renderToStaticMarkup(createElement(SettingsScreen, {
     loadStatus,
     moduleId: "module-1",
-    onApply: (profile) => profile,
+    onApply: async (profile) => profile,
     onBack: vi.fn(),
     profile: createDefaultProfile(),
   }));
@@ -86,7 +86,7 @@ describe("SettingsScreen", () => {
       context: "game",
       loadStatus: "loaded",
       moduleId: "module-1",
-      onApply: (profile) => profile,
+      onApply: async (profile) => profile,
       onBack: vi.fn(),
       profile: createDefaultProfile(),
     }));

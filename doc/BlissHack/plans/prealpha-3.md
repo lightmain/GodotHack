@@ -574,6 +574,33 @@ blisshack.active-game-and-storage
 - 两个页面同时请求短存储操作时严格串行执行。
 - Web Locks API 缺失时显示 warning，并且单页面流程仍通过。
 
+### 7.6 阶段结果
+
+阶段四已于 2026-09-07 在 `dev/MultiPageLock` 分支完成：
+
+- 游戏和持久数据操作统一使用
+  `blisshack.active-game-and-storage` 独占 Web Lock；session 使用长期 lease，
+  文件与 profile 操作使用短锁。
+- 获锁后重新读取 IDBFS 和 profile；Continue 列表可以发现另一页面刚保存的
+  存档，New Game 和 Continue 使用锁内最新配置。
+- 过期 profile draft、raw save 删除或覆盖确认以及完整备份预览不会静默覆盖
+  更新后的数据。
+- 冲突和锁请求失败提供可重试对话框；正常退出、fatal 和页面关闭释放锁；
+  API 缺失时显示 warning 并保持单页面可用。
+- idle Home 页面不再在卸载时 flush prepared module，避免旧 MEMFS 快照覆盖
+  另一页面的持久化结果。
+
+最终验收结果：
+
+- `npm test`：37 个测试文件、376 项断言通过。
+- `npm run lint -- --deny-warnings`：0 warning、0 error。
+- `npm run build`：TypeScript 和 Vite 生产构建通过，运行时三件套校验通过。
+- `npm run test:integration:wasm`：33 项真实 WASM 断言通过。
+- `npm run test:integration:browser`：29 条 Chromium 流程通过，其中包含原
+  22 条单窗口回归和 7 条阶段四流程。
+- `npm run test:long`：4 条长流程通过。
+- `git diff --check` 通过。
+
 ## 8. 阶段五：永久背包独立分支
 
 ### 8.1 强制设计评审门禁

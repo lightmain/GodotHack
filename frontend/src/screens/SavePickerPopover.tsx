@@ -9,6 +9,7 @@ import {
   type RawSaveSummary,
   type SaveListEntry,
 } from "../storage/storage-service";
+import { GameLockCancelledError } from "../concurrency/game-lock";
 
 /** Properties for the saved-game popover anchored to Continue. */
 interface SavePickerPopoverProps {
@@ -77,10 +78,13 @@ export function SavePickerPopover({
       await onDelete(save);
       setConfirmingPath(null);
     } catch (error) {
-      setDeleteError({
-        path: save.path,
-        message: deleteErrorMessage(error),
-      });
+      if (!(error instanceof GameLockCancelledError)) {
+        setConfirmingPath(null);
+        setDeleteError({
+          path: save.path,
+          message: deleteErrorMessage(error),
+        });
+      }
     } finally {
       setDeletingPath(null);
     }
@@ -120,10 +124,12 @@ export function SavePickerPopover({
         setImportSuccessSerial((serial) => (serial ?? 0) + 1);
       }
     } catch (error) {
-      setOperationError({
-        title: "Import failed",
-        message: operationErrorMessage(error, "Could not import save"),
-      });
+      if (!(error instanceof GameLockCancelledError)) {
+        setOperationError({
+          title: "Import failed",
+          message: operationErrorMessage(error, "Could not import save"),
+        });
+      }
     } finally {
       setTransferPending(false);
     }
@@ -136,19 +142,30 @@ export function SavePickerPopover({
     try {
       const result = await onImport({
         ...importConflict.request,
+        expectedExisting: importConflict.conflict.existing,
         overwrite: true,
       });
       if (result.status === "conflict") {
-        throw new Error("Save replacement still requires confirmation");
+        setImportConflict({
+          conflict: result,
+          request: {
+            ...importConflict.request,
+            expectedExisting: undefined,
+            overwrite: false,
+          },
+        });
+        return;
       }
       setImportConflict(null);
       setImportSuccessSerial((serial) => (serial ?? 0) + 1);
     } catch (error) {
-      setImportConflict(null);
-      setOperationError({
-        title: "Import failed",
-        message: operationErrorMessage(error, "Could not replace save"),
-      });
+      if (!(error instanceof GameLockCancelledError)) {
+        setImportConflict(null);
+        setOperationError({
+          title: "Import failed",
+          message: operationErrorMessage(error, "Could not replace save"),
+        });
+      }
     } finally {
       setTransferPending(false);
     }
@@ -161,10 +178,12 @@ export function SavePickerPopover({
     try {
       await onExport(save);
     } catch (error) {
-      setOperationError({
-        title: "Export failed",
-        message: operationErrorMessage(error, "Could not export save"),
-      });
+      if (!(error instanceof GameLockCancelledError)) {
+        setOperationError({
+          title: "Export failed",
+          message: operationErrorMessage(error, "Could not export save"),
+        });
+      }
     } finally {
       setTransferPending(false);
     }

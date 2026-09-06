@@ -23,7 +23,7 @@ describe("GameScreen interface settings", () => {
       const html = renderToStaticMarkup(createElement(GameScreen, {
         loadStatus: "loaded",
         moduleId: "module-1",
-        onApplyProfile: (candidate) => candidate,
+        onApplyProfile: async (candidate) => candidate,
         profile,
       }));
 
@@ -45,7 +45,7 @@ describe("GameScreen interface settings", () => {
       const html = renderToStaticMarkup(createElement(GameScreen, {
         loadStatus: "loaded",
         moduleId: "module-1",
-        onApplyProfile: (candidate) => candidate,
+        onApplyProfile: async (candidate) => candidate,
         profile,
       }));
 

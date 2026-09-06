@@ -66,6 +66,17 @@ export class BackupRollbackError extends Error {
   }
 }
 
+/** Current local saves changed after the player reviewed an import preview. */
+export class BackupPreviewStaleError extends Error {
+  readonly preview: BackupImportPreview;
+
+  constructor(preview: BackupImportPreview) {
+    super("Local saves changed after the backup preview was created");
+    this.name = "BackupPreviewStaleError";
+    this.preview = preview;
+  }
+}
+
 /**
  * Serialize the current profile and all formal save bytes.
  * @param storage - module-bound storage service.
@@ -132,6 +143,58 @@ export async function previewFullBackup(
     },
     entries,
   };
+}
+
+/**
+ * Reclassify a validated preview against the latest module and save list.
+ * @param storage - refreshed module-bound storage.
+ * @param preview - previously validated immutable backup bytes.
+ * @returns a new preview retaining source metadata and bytes.
+ */
+export async function refreshBackupPreview(
+  storage: StorageService,
+  preview: BackupImportPreview,
+): Promise<BackupImportPreview> {
+  const existingSaves = await storage.listSaves();
+  const entries: BackupImportPreviewEntry[] = [];
+  for (const entry of preview.entries) {
+    let validation = await storage.validateSave(entry.bytes);
+    if (
+      validation.status === "ready"
+      && entry.fileName !== `0${validation.identity.playerName}`
+    ) {
+      validation = {
+        status: "damaged",
+        reason: "identity-file-name-mismatch",
+      };
+    }
+    entries.push(classifyEntry(
+      entry.fileName,
+      entry.bytes,
+      validation,
+      existingSaves,
+    ));
+  }
+  return { source: preview.source, entries };
+}
+
+/**
+ * Return whether two previews authorize the same current storage targets.
+ * @param reviewed - preview explicitly confirmed by the player.
+ * @param current - preview rebuilt after obtaining the import lock.
+ */
+export function backupPreviewMatches(
+  reviewed: BackupImportPreview,
+  current: BackupImportPreview,
+): boolean {
+  if (reviewed.entries.length !== current.entries.length) return false;
+  return reviewed.entries.every((entry, index) => {
+    const other = current.entries[index];
+    return other !== undefined
+      && entry.fileName === other.fileName
+      && entry.classification === other.classification
+      && saveRevision(entry.existing) === saveRevision(other.existing);
+  });
 }
 
 /**
@@ -249,4 +312,15 @@ function summarize(results: BackupSaveImportResult[]): BackupImportSummary {
     skipped: results.filter((entry) => entry.status === "skipped").length,
     failed: results.filter((entry) => entry.status === "failed").length,
   };
+}
+
+/** Build a non-content revision for one currently occupied formal path. */
+function saveRevision(save: SaveListEntry | null): string {
+  if (!save) return "missing";
+  const identity = save.status === "ready"
+    ? `${save.identity.playerName}:${save.identity.role}:${
+      save.identity.race
+    }:${save.identity.gender}:${save.identity.alignment}`
+    : `${save.status}:${save.reason}`;
+  return `${save.path}:${save.modifiedAt ?? "unknown"}:${identity}`;
 }
