@@ -1401,12 +1401,12 @@
 }
 
 .permanent-inventory-collapsed {
-  width: 4ch;
+  width: 41px;
   overflow: hidden;
 }
 
 .permanent-inventory-right.permanent-inventory-collapsed {
-  flex-basis: 4ch;
+  flex-basis: 41px;
 }
 
 .permanent-inventory-header {
@@ -1443,6 +1443,16 @@
   flex: 0 0 28px;
   display: grid;
   place-items: center;
+}
+
+.permanent-inventory-collapsed .permanent-inventory-header {
+  justify-content: center;
+  gap: 0;
+  padding: 3px 6px;
+}
+
+.permanent-inventory-collapsed .permanent-inventory-header > div {
+  display: none;
 }
 
 .permanent-inventory-items {
@@ -1484,7 +1494,7 @@
   }
 
   .nh-playfield-right .permanent-inventory-collapsed {
-    width: 4ch;
+    width: 41px;
   }
 }
 

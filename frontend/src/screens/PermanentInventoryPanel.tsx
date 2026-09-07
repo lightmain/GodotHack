@@ -29,7 +29,7 @@ export function PermanentInventoryPanel({
       className={`permanent-inventory permanent-inventory-${position}${collapsed ? " permanent-inventory-collapsed" : ""}`}
       data-position={position}
       role="region"
-      tabIndex={0}
+      tabIndex={collapsed ? -1 : 0}
     >
       <header className="permanent-inventory-header">
         <div>

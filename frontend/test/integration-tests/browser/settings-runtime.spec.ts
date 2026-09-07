@@ -83,7 +83,17 @@ test("renders and collapses the core permanent inventory without a modal", async
 
   await page.setViewportSize({ width: 900, height: 900 });
   const collapsedBox = await inventory.boundingBox();
-  expect(collapsedBox?.width).toBeLessThan(80);
+  const expandButtonBox = await page.getByRole(
+    "button",
+    { name: "Expand inventory" },
+  ).boundingBox();
+  expect(collapsedBox?.width).toBe(41);
+  expect(expandButtonBox?.x).toBeGreaterThanOrEqual(collapsedBox?.x ?? 0);
+  expect(
+    (expandButtonBox?.x ?? 0) + (expandButtonBox?.width ?? 0),
+  ).toBeLessThanOrEqual(
+    (collapsedBox?.x ?? 0) + (collapsedBox?.width ?? 0),
+  );
 
   await page.keyboard.press("i");
   await expect(page.locator(".nh-dialog.nh-menu")).toBeVisible();

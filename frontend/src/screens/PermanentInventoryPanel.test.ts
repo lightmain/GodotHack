@@ -78,5 +78,6 @@ describe("PermanentInventoryPanel", () => {
     expect(html).not.toContain("a blessed long sword");
     expect(html).toMatch(/right/);
     expect(html).not.toContain("data-width");
+    expect(html).toContain('tabindex="-1"');
   });
 });
