@@ -87,13 +87,22 @@ test("renders and collapses the core permanent inventory without a modal", async
     "button",
     { name: "Expand inventory" },
   ).boundingBox();
-  expect(collapsedBox?.width).toBe(41);
+  expect(collapsedBox?.width).toBe(42);
   expect(expandButtonBox?.x).toBeGreaterThanOrEqual(collapsedBox?.x ?? 0);
   expect(
     (expandButtonBox?.x ?? 0) + (expandButtonBox?.width ?? 0),
   ).toBeLessThanOrEqual(
     (collapsedBox?.x ?? 0) + (collapsedBox?.width ?? 0),
   );
+  expect(Math.abs(
+    (expandButtonBox?.x ?? 0) + (expandButtonBox?.width ?? 0) / 2
+      - ((collapsedBox?.x ?? 0) + (collapsedBox?.width ?? 0) / 2),
+  )).toBeLessThanOrEqual(0.5);
+  await expect(inventory).toHaveCSS("border-top-width", "1px");
+  await expect(inventory).toHaveCSS("border-right-width", "1px");
+  await expect(inventory).toHaveCSS("border-bottom-width", "1px");
+  await expect(inventory).toHaveCSS("border-left-width", "1px");
+  await expect(inventory).toHaveCSS("border-radius", "4px");
 
   await page.keyboard.press("i");
   await expect(page.locator(".nh-dialog.nh-menu")).toBeVisible();

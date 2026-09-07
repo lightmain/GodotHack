@@ -1379,15 +1379,15 @@
 
 .permanent-inventory {
   min-width: 0;
-  border-left: 1px solid #30363a;
+  border: 1px solid #5a6268;
+  border-radius: 4px;
   color: #d8d8d2;
-  background: #101315;
+  background: #0d1011;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 38%);
   overflow: auto;
 }
 
 .permanent-inventory-below {
-  border-top: 1px solid #30363a;
-  border-left: 0;
   max-height: 12em;
 }
 
@@ -1401,12 +1401,12 @@
 }
 
 .permanent-inventory-collapsed {
-  width: 41px;
+  width: 42px;
   overflow: hidden;
 }
 
 .permanent-inventory-right.permanent-inventory-collapsed {
-  flex-basis: 41px;
+  flex-basis: 42px;
 }
 
 .permanent-inventory-header {
@@ -1417,6 +1417,7 @@
   gap: 8px;
   padding: 4px 6px 4px 10px;
   border-bottom: 1px solid #30363a;
+  background: #15191b;
 }
 
 .permanent-inventory-header > div {
@@ -1441,14 +1442,33 @@
   width: 28px;
   height: 28px;
   flex: 0 0 28px;
+  padding: 0;
   display: grid;
   place-items: center;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: #aeb6ba;
+  line-height: 0;
+  cursor: pointer;
+}
+
+.permanent-inventory-header button:hover,
+.permanent-inventory-header button:focus-visible {
+  border-color: #5a6268;
+  background: #1b2023;
+  color: #fff;
+}
+
+.permanent-inventory-header button svg {
+  display: block;
 }
 
 .permanent-inventory-collapsed .permanent-inventory-header {
   justify-content: center;
   gap: 0;
   padding: 3px 6px;
+  border-bottom: 0;
 }
 
 .permanent-inventory-collapsed .permanent-inventory-header > div {
@@ -1489,12 +1509,10 @@
     width: min(80ch, 100%);
     flex-basis: auto;
     max-height: 12em;
-    border-top: 1px solid #30363a;
-    border-left: 0;
   }
 
   .nh-playfield-right .permanent-inventory-collapsed {
-    width: 41px;
+    width: 42px;
   }
 }
 
