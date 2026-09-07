@@ -366,22 +366,6 @@ export function SettingsScreen({
               ]}
               value={draft.interface.permanentInventoryPosition}
             />
-            <label className="settings-field settings-select">
-              <span>Inventory width</span>
-              <select
-                onChange={(event) => {
-                  updateInterface(setDraft, {
-                    permanentInventoryWidth: event.currentTarget.value as
-                      InterfaceSettingsV1["permanentInventoryWidth"],
-                  });
-                }}
-                value={draft.interface.permanentInventoryWidth}
-              >
-                <option value="compact">Compact</option>
-                <option value="standard">Standard</option>
-                <option value="wide">Wide</option>
-              </select>
-            </label>
             <ToggleField
               checked={draft.interface.permanentInventoryCollapsed}
               label="Start inventory collapsed"

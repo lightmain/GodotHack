@@ -48,7 +48,6 @@ function renderPanel(collapsed: boolean): string {
     inventory,
     onCollapsedChange: vi.fn(),
     position: "right",
-    width: "standard",
   }));
 }
 
@@ -78,6 +77,6 @@ describe("PermanentInventoryPanel", () => {
     expect(html).not.toContain("Weapons");
     expect(html).not.toContain("a blessed long sword");
     expect(html).toMatch(/right/);
-    expect(html).toMatch(/standard/);
+    expect(html).not.toContain("data-width");
   });
 });

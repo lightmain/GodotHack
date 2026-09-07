@@ -1391,9 +1391,10 @@
   max-height: 12em;
 }
 
-.permanent-inventory-compact { width: 24ch; }
-.permanent-inventory-standard { width: 32ch; }
-.permanent-inventory-wide { width: 40ch; }
+.permanent-inventory-right {
+  width: 64ch;
+  flex: 0 0 64ch;
+}
 
 .permanent-inventory-below {
   width: min(80ch, 100%);
@@ -1402,6 +1403,10 @@
 .permanent-inventory-collapsed {
   width: 4ch;
   overflow: hidden;
+}
+
+.permanent-inventory-right.permanent-inventory-collapsed {
+  flex-basis: 4ch;
 }
 
 .permanent-inventory-header {
@@ -1472,6 +1477,7 @@
 
   .nh-playfield-right .permanent-inventory {
     width: min(80ch, 100%);
+    flex-basis: auto;
     max-height: 12em;
     border-top: 1px solid #30363a;
     border-left: 0;

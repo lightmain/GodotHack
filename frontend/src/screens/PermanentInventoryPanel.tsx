@@ -1,16 +1,12 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { PermanentInventoryState } from "../game-state";
-import type {
-  PermanentInventoryPosition,
-  PermanentInventoryWidth,
-} from "../settings/profile";
+import type { PermanentInventoryPosition } from "../settings/profile";
 
 interface PermanentInventoryPanelProps {
   collapsed: boolean;
   inventory: PermanentInventoryState;
   onCollapsedChange(collapsed: boolean): void;
   position: PermanentInventoryPosition;
-  width: PermanentInventoryWidth;
 }
 
 /**
@@ -21,7 +17,6 @@ export function PermanentInventoryPanel({
   inventory,
   onCollapsedChange,
   position,
-  width,
 }: PermanentInventoryPanelProps) {
   const itemCount = inventory.items.filter(
     (item) => item.identifier !== null,
@@ -31,9 +26,8 @@ export function PermanentInventoryPanel({
   return (
     <aside
       aria-label="Inventory"
-      className={`permanent-inventory permanent-inventory-${position} permanent-inventory-${width}${collapsed ? " permanent-inventory-collapsed" : ""}`}
+      className={`permanent-inventory permanent-inventory-${position}${collapsed ? " permanent-inventory-collapsed" : ""}`}
       data-position={position}
-      data-width={width}
       role="region"
       tabIndex={0}
     >

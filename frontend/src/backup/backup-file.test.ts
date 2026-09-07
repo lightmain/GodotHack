@@ -81,7 +81,6 @@ describe("full backup format", () => {
   it("round-trips every permanent inventory profile field", async () => {
     const profile = createDefaultProfile();
     profile.interface.permanentInventoryPosition = "below";
-    profile.interface.permanentInventoryWidth = "wide";
     profile.interface.permanentInventoryCollapsed = true;
     profile.nethack.permInvent = true;
     profile.nethack.perminvMode = "in-use";
@@ -101,7 +100,6 @@ describe("full backup format", () => {
   it("rejects a schema 1 backup containing the old profile shape", async () => {
     const document = await exportedDocument();
     delete document.profile.interface.permanentInventoryPosition;
-    delete document.profile.interface.permanentInventoryWidth;
     delete document.profile.interface.permanentInventoryCollapsed;
     delete document.profile.nethack.permInvent;
     delete document.profile.nethack.perminvMode;

@@ -13,14 +13,6 @@ export const PERMANENT_INVENTORY_POSITIONS = ["right", "below"] as const;
 export type PermanentInventoryPosition =
   (typeof PERMANENT_INVENTORY_POSITIONS)[number];
 
-export const PERMANENT_INVENTORY_WIDTHS = [
-  "compact",
-  "standard",
-  "wide",
-] as const;
-export type PermanentInventoryWidth =
-  (typeof PERMANENT_INVENTORY_WIDTHS)[number];
-
 export const NUMBER_PAD_MODES = [0, 1, 2, 3, 4, -1] as const;
 export type NumberPadMode = (typeof NUMBER_PAD_MODES)[number];
 
@@ -55,7 +47,6 @@ export interface InterfaceSettingsV1 {
   messageHistoryLines: MessageHistoryLines;
   followPlayer: boolean;
   permanentInventoryPosition: PermanentInventoryPosition;
-  permanentInventoryWidth: PermanentInventoryWidth;
   permanentInventoryCollapsed: boolean;
 }
 
@@ -114,7 +105,6 @@ export function createDefaultProfile(): BlissHackProfileV1 {
       messageHistoryLines: 5,
       followPlayer: true,
       permanentInventoryPosition: "right",
-      permanentInventoryWidth: "standard",
       permanentInventoryCollapsed: false,
     },
     nethack: {
@@ -266,7 +256,6 @@ export function validateInterfaceSettings(
       "messageHistoryLines",
       "followPlayer",
       "permanentInventoryPosition",
-      "permanentInventoryWidth",
       "permanentInventoryCollapsed",
     ],
     "interface",
@@ -284,12 +273,6 @@ export function validateInterfaceSettings(
   )) {
     throw invalidProfile("interface.permanentInventoryPosition is invalid");
   }
-  if (!isOneOf(
-    settings.permanentInventoryWidth,
-    PERMANENT_INVENTORY_WIDTHS,
-  )) {
-    throw invalidProfile("interface.permanentInventoryWidth is invalid");
-  }
   assertBoolean(
     settings.permanentInventoryCollapsed,
     "interface.permanentInventoryCollapsed",
@@ -300,7 +283,6 @@ export function validateInterfaceSettings(
     messageHistoryLines: settings.messageHistoryLines,
     followPlayer: settings.followPlayer,
     permanentInventoryPosition: settings.permanentInventoryPosition,
-    permanentInventoryWidth: settings.permanentInventoryWidth,
     permanentInventoryCollapsed: settings.permanentInventoryCollapsed,
   };
 }

@@ -287,7 +287,6 @@ export function GameScreen({
                 inventory={snapshot.permanentInventory}
                 onCollapsedChange={setInventoryCollapsed}
                 position={settings.permanentInventoryPosition}
-                width={settings.permanentInventoryWidth}
               />
             )}
           </div>

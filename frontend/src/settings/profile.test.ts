@@ -42,7 +42,6 @@ describe("profile defaults and validation", () => {
         messageHistoryLines: 5,
         followPlayer: true,
         permanentInventoryPosition: "right",
-        permanentInventoryWidth: "standard",
         permanentInventoryCollapsed: false,
       },
       nethack: {
@@ -95,20 +94,17 @@ describe("profile defaults and validation", () => {
   );
 
   it.each([
-    ["right", "compact", true],
-    ["below", "standard", false],
-    ["right", "wide", false],
+    ["right", true],
+    ["below", false],
   ] as const)(
-    "accepts permanent inventory layout %s/%s with collapsed=%s",
-    (permanentInventoryPosition, permanentInventoryWidth, permanentInventoryCollapsed) => {
+    "accepts permanent inventory position %s with collapsed=%s",
+    (permanentInventoryPosition, permanentInventoryCollapsed) => {
       const profile = createDefaultProfile();
       profile.interface.permanentInventoryPosition = permanentInventoryPosition;
-      profile.interface.permanentInventoryWidth = permanentInventoryWidth;
       profile.interface.permanentInventoryCollapsed = permanentInventoryCollapsed;
 
       expect(validateProfile(profile).interface).toMatchObject({
         permanentInventoryPosition,
-        permanentInventoryWidth,
         permanentInventoryCollapsed,
       });
     },
@@ -160,8 +156,8 @@ describe("profile defaults and validation", () => {
     ["invalid inventory position", (profile: Record<string, unknown>) => {
       (profile.interface as Record<string, unknown>).permanentInventoryPosition = "left";
     }],
-    ["invalid inventory width", (profile: Record<string, unknown>) => {
-      (profile.interface as Record<string, unknown>).permanentInventoryWidth = "fluid";
+    ["obsolete inventory width", (profile: Record<string, unknown>) => {
+      (profile.interface as Record<string, unknown>).permanentInventoryWidth = "wide";
     }],
     ["invalid collapsed type", (profile: Record<string, unknown>) => {
       (profile.interface as Record<string, unknown>).permanentInventoryCollapsed = "no";
@@ -211,7 +207,6 @@ describe("profile defaults and validation", () => {
       nethack: Record<string, unknown>;
     };
     delete oldProfile.interface.permanentInventoryPosition;
-    delete oldProfile.interface.permanentInventoryWidth;
     delete oldProfile.interface.permanentInventoryCollapsed;
     delete oldProfile.nethack.permInvent;
     delete oldProfile.nethack.perminvMode;
@@ -277,7 +272,6 @@ describe("profile import and export", () => {
       nethack: Record<string, unknown>;
     };
     delete document.interface.permanentInventoryPosition;
-    delete document.interface.permanentInventoryWidth;
     delete document.interface.permanentInventoryCollapsed;
     delete document.nethack.permInvent;
     delete document.nethack.perminvMode;

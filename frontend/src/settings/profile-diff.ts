@@ -46,12 +46,6 @@ const PROFILE_FIELDS: readonly FieldDefinition[] = [
     format: TEXT,
   },
   {
-    path: "interface.permanentInventoryWidth",
-    label: "Inventory width",
-    value: (profile) => profile.interface.permanentInventoryWidth,
-    format: TEXT,
-  },
-  {
     path: "interface.permanentInventoryCollapsed",
     label: "Start inventory collapsed",
     value: (profile) => profile.interface.permanentInventoryCollapsed,

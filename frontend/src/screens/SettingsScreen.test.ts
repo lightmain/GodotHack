@@ -44,7 +44,7 @@ describe("SettingsScreen", () => {
     expect(html).toContain("Message history");
     expect(html).toContain("Follow player on the map");
     expect(html).toContain("Inventory position");
-    expect(html).toContain("Inventory width");
+    expect(html).not.toContain("Inventory width");
     expect(html).toContain("Start inventory collapsed");
     expect(html).toContain("Offer tutorial for new games");
     expect(html).toContain("Automatic pickup");
@@ -71,7 +71,6 @@ describe("SettingsScreen", () => {
     expect(html).toMatch(/<input(?=[^>]*checked="")(?=[^>]*value="5")[^>]*>/);
     expect(html).toContain("<option value=\"0\" selected=\"\">");
     expect(html).toMatch(/<input(?=[^>]*checked="")(?=[^>]*value="right")[^>]*>/);
-    expect(html).toContain('<option value="standard" selected="">');
     expect(labelMarkup(html, "Permanent inventory")).not.toContain("checked");
     expect(html).toContain('<option value="all" selected="">');
     expect(labelMarkup(html, "Start inventory collapsed")).not.toContain("checked");

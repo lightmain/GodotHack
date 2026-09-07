@@ -119,7 +119,7 @@ schema 1 的完整结构；旧开发数据可以失效，不增加迁移器、�
 - 启用后，启动、拾取、丢弃、穿戴、卸下、数量变化和恢复存档会更新唯一侧栏。
 - 普通 `PICK_ONE`、`PICK_ANY` 和非永久 `PICK_NONE` 菜单保持现有 modal 行为。
 - Home 和游戏内 Settings 都能配置 `perm_invent` 与 `perminv_mode`。
-- 侧栏位置、宽度和折叠状态由界面配置持久化。
+- 侧栏位置和折叠状态由界面配置持久化；展开宽度由响应式布局统一控制。
 - profile、个人配置文件和完整备份使用扩展后的当前 schema 1。
 - 更新期间不重入 WASM，不额外消耗游戏回合，不创建第二个 session。
 
@@ -389,7 +389,7 @@ OPTIONS=!perm_invent
 |------|---------------|-----------------|
 | `permInvent` | 下一次 New Game 或 Continue 启动时 | 下一安全命令边界 |
 | `perminvMode` | 下一次 New Game 或 Continue 启动时 | 下一安全命令边界 |
-| 侧栏位置、宽度、折叠 | 下一次显示侧栏时使用 | Apply 后立即生效 |
+| 侧栏位置、折叠 | 下一次显示侧栏时使用 | Apply 后立即生效 |
 
 `perm_invent` 和 `perminv_mode` 位于 `iflags`，不依赖存档中的 `flags` 恢复。
 因此 Continue 也读取当前个人配置；恢复完成后的首次 `update_inventory()` 用
@@ -407,7 +407,6 @@ interface InterfaceSettingsV1 {
   messageHistoryLines: 3 | 5;
   followPlayer: boolean;
   permanentInventoryPosition: "right" | "below";
-  permanentInventoryWidth: "compact" | "standard" | "wide";
   permanentInventoryCollapsed: boolean;
 }
 
@@ -422,19 +421,14 @@ interface NetHackSettingsV1 {
 
 ```text
 permanentInventoryPosition = right
-permanentInventoryWidth = standard
 permanentInventoryCollapsed = false
 permInvent = false
 perminvMode = all
 ```
 
-宽度是稳定预设，不按 viewport 连续缩放：
-
-| 预设 | 展开宽度 |
-|------|----------|
-| `compact` | `24ch` |
-| `standard` | `32ch` |
-| `wide` | `40ch` |
+桌面右侧背包使用单一 `64ch` 展开宽度，使常见物品描述尽量保持单行，同时让
+地图在组合布局中自然偏左。空间不足时侧栏自动移到地图下方并使用最多 `80ch`
+宽度；宽度不作为 profile 配置。
 
 ### 7.2 浏览器存储
 
@@ -609,7 +603,6 @@ card。
 `Interface` 区段增加：
 
 - `Inventory position`：`Right` / `Below` segmented control。
-- `Inventory width`：`Compact` / `Standard` / `Wide` select。
 - `Start inventory collapsed`：toggle。
 
 这些控件始终可编辑，用于预先配置未来开启时的布局。`NetHack` 区段增加：
@@ -850,7 +843,7 @@ git diff --check
 4. `#perminv` 在 prealpha-3 只安全重填，不负责把焦点移入浏览器侧栏。
 5. prealpha 阶段直接扩展 schema 1，不兼容或迁移旧开发 profile 与 backup。
 6. 永久背包默认关闭，mode 默认 `all`。
-7. 侧栏配置采用 right/below、24/32/40ch 三档宽度和折叠布尔值。
+7. 侧栏配置采用 right/below 和折叠布尔值；桌面右侧展开宽度统一为 64ch。
 8. 数量及装备状态显示 NetHack 原文，不增加文本解析或新的物品查询 ABI。
 9. 永久背包快照保留 revision、identifier 和 accelerator；本阶段不实现拖放、
    点击操作、`InventoryActionIntent` 或 `d+x` 自动输入。

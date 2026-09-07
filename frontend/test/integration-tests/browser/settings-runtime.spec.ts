@@ -67,6 +67,13 @@ test("renders and collapses the core permanent inventory without a modal", async
   await expect(inventory).toBeVisible();
   await expect(inventory).toContainText(/\d+ items?/);
   await expect(page.locator(".nh-dialog.nh-menu")).toHaveCount(0);
+  const viewport = page.viewportSize();
+  const mapBox = await page.locator(".nh-map").boundingBox();
+  const inventoryBox = await inventory.boundingBox();
+  expect(inventoryBox?.width).toBeGreaterThan(500);
+  expect((mapBox?.x ?? 0) + (mapBox?.width ?? 0) / 2).toBeLessThan(
+    (viewport?.width ?? 0) / 2 - 200,
+  );
 
   await page.getByRole("button", { name: "Collapse inventory" }).click();
   await expect(
