@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { PermanentInventoryState } from "../game-state";
 import type { PermanentInventoryPosition } from "../settings/profile";
 
@@ -48,7 +48,7 @@ export function PermanentInventoryPanel({
         >
           {collapsed
             ? <ChevronRight aria-hidden="true" size={17} />
-            : <ChevronDown aria-hidden="true" size={17} />}
+            : <ChevronLeft aria-hidden="true" size={17} />}
         </button>
       </header>
       {!collapsed && (
