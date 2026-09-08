@@ -1797,7 +1797,8 @@
 
 .nh-menu-heading {
   min-height: 1.5em;
-  padding: 4px 8px;
+  margin: 4px 0;
+  padding: 2px 8px;
   color: #fff;
   font-weight: 700;
 }

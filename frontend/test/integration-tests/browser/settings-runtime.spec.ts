@@ -100,8 +100,8 @@ test("renders and collapses the core permanent inventory without a modal", async
 
   const permanentHeading = inventory.locator(".nh-menu-heading").first();
   await expect(permanentHeading).toHaveCSS("font-weight", "700");
-  await expect(permanentHeading).toHaveCSS("padding-top", "200px");
-  await expect(permanentHeading).toHaveCSS("padding-bottom", "6px");
+  await expect(permanentHeading).toHaveCSS("margin-top", "4px");
+  await expect(permanentHeading).toHaveCSS("margin-bottom", "4px");
   const inventoryRows = inventory.locator(
     ".permanent-inventory-item:not(.permanent-inventory-heading)",
   );
@@ -110,8 +110,13 @@ test("renders and collapses the core permanent inventory without a modal", async
     firstInventoryRow.boundingBox(),
     firstInventoryRow.locator(".nh-menu-text").boundingBox(),
   ]);
+  const permanentHeadingBox = await permanentHeading.boundingBox();
   expect(firstRowBox).not.toBeNull();
   expect(firstTextBox).not.toBeNull();
+  expect(permanentHeadingBox).not.toBeNull();
+  expect(
+    firstRowBox!.y - permanentHeadingBox!.y - permanentHeadingBox!.height,
+  ).toBeGreaterThanOrEqual(4);
   expect(firstTextBox!.width).toBeGreaterThan(firstRowBox!.width / 2);
   await firstInventoryRow.hover();
   await expect(firstInventoryRow).toHaveCSS(
@@ -209,8 +214,17 @@ test("renders and collapses the core permanent inventory without a modal", async
   await expect(ordinaryInventory).toBeVisible();
   const ordinaryHeading = ordinaryInventory.locator(".nh-menu-heading").first();
   await expect(ordinaryHeading).toHaveCSS("font-weight", "700");
-  await expect(ordinaryHeading).toHaveCSS("padding-top", "4px");
-  await expect(ordinaryHeading).toHaveCSS("padding-bottom", "4px");
+  await expect(ordinaryHeading).toHaveCSS("margin-top", "4px");
+  await expect(ordinaryHeading).toHaveCSS("margin-bottom", "4px");
+  const [ordinaryHeadingBox, ordinaryFirstRowBox] = await Promise.all([
+    ordinaryHeading.boundingBox(),
+    ordinaryInventory.locator(".nh-menu-item").first().boundingBox(),
+  ]);
+  expect(ordinaryHeadingBox).not.toBeNull();
+  expect(ordinaryFirstRowBox).not.toBeNull();
+  expect(
+    ordinaryFirstRowBox!.y - ordinaryHeadingBox!.y - ordinaryHeadingBox!.height,
+  ).toBeGreaterThanOrEqual(4);
   await expect(
     ordinaryInventory.locator(".nh-menu-glyph").first(),
   ).toHaveText(/\S/);
