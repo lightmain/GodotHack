@@ -98,6 +98,10 @@ test("renders and collapses the core permanent inventory without a modal", async
   await page.keyboard.press("PageDown");
   expect(await pageDownDefaultPrevented).toBe(false);
 
+  const permanentHeading = inventory.locator(".nh-menu-heading").first();
+  await expect(permanentHeading).toHaveCSS("font-weight", "700");
+  await expect(permanentHeading).toHaveCSS("padding-top", "200px");
+  await expect(permanentHeading).toHaveCSS("padding-bottom", "6px");
   const inventoryRows = inventory.locator(
     ".permanent-inventory-item:not(.permanent-inventory-heading)",
   );
@@ -203,6 +207,10 @@ test("renders and collapses the core permanent inventory without a modal", async
   await page.keyboard.press("i");
   const ordinaryInventory = page.locator(".nh-dialog.nh-menu");
   await expect(ordinaryInventory).toBeVisible();
+  const ordinaryHeading = ordinaryInventory.locator(".nh-menu-heading").first();
+  await expect(ordinaryHeading).toHaveCSS("font-weight", "700");
+  await expect(ordinaryHeading).toHaveCSS("padding-top", "4px");
+  await expect(ordinaryHeading).toHaveCSS("padding-bottom", "4px");
   await expect(
     ordinaryInventory.locator(".nh-menu-glyph").first(),
   ).toHaveText(/\S/);

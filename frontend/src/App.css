@@ -1483,10 +1483,6 @@
   overflow-wrap: anywhere;
 }
 
-.permanent-inventory-heading {
-  font-weight: 700;
-}
-
 @media (max-width: 1180px) {
   .nh-playfield-right {
     flex-direction: column;
@@ -1801,8 +1797,9 @@
 
 .nh-menu-heading {
   min-height: 1.5em;
-  padding: 4px 8px 2px;
+  padding: 4px 8px;
   color: #fff;
+  font-weight: 700;
 }
 
 .nh-menu-item {
