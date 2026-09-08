@@ -101,6 +101,12 @@ test("renders and collapses the core permanent inventory without a modal", async
   const inventoryRows = inventory.locator(
     ".permanent-inventory-item:not(.permanent-inventory-heading)",
   );
+  const firstInventoryRow = inventoryRows.first();
+  await firstInventoryRow.hover();
+  await expect(firstInventoryRow).toHaveCSS(
+    "background-color",
+    "rgb(27, 32, 35)",
+  );
   const allCount = await inventoryRows.count();
   await page.keyboard.press("Tab");
   await page.keyboard.press("Tab");
@@ -121,7 +127,7 @@ test("renders and collapses the core permanent inventory without a modal", async
   await expect(wornRow).toBeVisible();
   const wornText = (await wornRow.textContent()) ?? "";
   const wornKey = (await wornRow.locator(
-    ".permanent-inventory-key",
+    ".nh-menu-accelerator",
   ).textContent())?.trim();
   expect(wornKey).toMatch(/^[a-zA-Z]$/);
   await page.keyboard.press("T");
@@ -188,7 +194,11 @@ test("renders and collapses the core permanent inventory without a modal", async
     (panel) => !panel.contains(document.activeElement),
   )).toBe(true);
   await page.keyboard.press("i");
-  await expect(page.locator(".nh-dialog.nh-menu")).toBeVisible();
+  const ordinaryInventory = page.locator(".nh-dialog.nh-menu");
+  await expect(ordinaryInventory).toBeVisible();
+  await expect(
+    ordinaryInventory.locator(".nh-menu-glyph").first(),
+  ).toHaveText(/\S/);
   await expect(page.locator(".nh-terminal")).toHaveAttribute("inert", "");
   await page.keyboard.press("Tab");
   expect(await page.locator(".nh-terminal").evaluate(

@@ -1475,16 +1475,9 @@
   display: none;
 }
 
-.permanent-inventory-items {
-  padding: 4px 0;
-}
-
 .permanent-inventory-item {
-  min-height: 1.4em;
-  display: grid;
   grid-template-columns: 2ch 2ch minmax(0, 1fr);
-  gap: 0.5ch;
-  padding: 1px 8px;
+  cursor: default;
 }
 
 .permanent-inventory-item > span:last-child {
@@ -1492,12 +1485,7 @@
 }
 
 .permanent-inventory-heading {
-  color: #8f989d;
   font-weight: 700;
-}
-
-.permanent-inventory-item.selected {
-  background: #233229;
 }
 
 @media (max-width: 1180px) {
@@ -1823,7 +1811,7 @@
   min-height: 25px;
   padding: 3px 8px;
   display: grid;
-  grid-template-columns: 2ch 2ch minmax(0, 1fr);
+  grid-template-columns: 2ch 2ch 2ch minmax(0, 1fr);
   gap: 1ch;
   border: 1px solid transparent;
   border-radius: 2px;
@@ -1845,6 +1833,7 @@
   background: #17301f;
 }
 
+.nh-menu-glyph,
 .nh-menu-mark,
 .nh-menu-accelerator {
   color: #7ddc8c;

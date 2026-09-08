@@ -66,8 +66,11 @@ describe("PermanentInventoryPanel", () => {
     expect(html).toContain("a blessed long sword (weapon in hand)");
     expect(html).toContain(")");
     expect(html).toMatch(/>a<\/span>/);
+    expect(html).toContain("nh-color-green");
+    expect(html).toContain('aria-disabled="true"');
     expect(html).toMatch(/selected/);
-    expect((html.match(/<button\b/g) ?? [])).toHaveLength(1);
+    expect((html.match(/<button\b/g) ?? [])).toHaveLength(2);
+    expect((html.match(/tabindex="-1"/g) ?? [])).toHaveLength(1);
   });
 
   it("collapses to a labelled control without exposing stale item rows", () => {
