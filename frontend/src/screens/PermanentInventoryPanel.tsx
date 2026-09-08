@@ -88,6 +88,9 @@ export function PermanentInventoryPanel({
                     <span aria-hidden="true" className="nh-menu-glyph">
                       {glyph || " "}
                     </span>
+                    <span aria-hidden="true" className="nh-menu-mark">
+                      {" "}
+                    </span>
                     <span
                       aria-hidden="true"
                       className="nh-menu-accelerator"

@@ -1476,7 +1476,6 @@
 }
 
 .nh-menu-item.permanent-inventory-item {
-  grid-template-columns: 2ch 2ch minmax(0, 1fr);
   cursor: default;
 }
 

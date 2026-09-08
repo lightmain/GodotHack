@@ -68,6 +68,7 @@ describe("PermanentInventoryPanel", () => {
     expect(html).toMatch(/>a<\/span>/);
     expect(html).toContain("nh-color-green");
     expect(html).toContain('aria-disabled="true"');
+    expect(html).toContain("nh-menu-mark");
     expect(html).toMatch(/selected/);
     expect((html.match(/<button\b/g) ?? [])).toHaveLength(2);
     expect((html.match(/tabindex="-1"/g) ?? [])).toHaveLength(1);
