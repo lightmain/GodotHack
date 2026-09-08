@@ -1903,11 +1903,12 @@ shim_settings_sync(snapshot) -> pending update or 0
 shim_settings_result(success, authoritative snapshot)
 ```
 
-协议是固定的 32-bit 无符号位字段，只覆盖 `autopickup`、`pickup_types`、
-`number_pad`、`safe_pet`、`sortpack`、`showexp` 和 `time`。bit 0 表示待应用，
-bit 1 至 6 表示布尔值和 pickup all，bit 7 至 9 编码 `number_pad`，
-bit 10 至 24 编码 15 个允许的 pickup class，bit 28 至 30 是协议版本。
-其余位必须为零；当前版本为 1。
+协议是固定的 32-bit 无符号位字段，覆盖 `autopickup`、`pickup_types`、
+`number_pad`、`safe_pet`、`sortpack`、`showexp`、`time`、`perm_invent`
+和 `perminv_mode`。bit 0 表示待应用，bit 1 至 6 表示布尔值和 pickup all，
+bit 7 至 9 编码 `number_pad`，bit 10 至 24 编码 15 个允许的 pickup class，
+bit 25 表示 `perm_invent`，bit 26 至 27 编码 `perminv_mode`，bit 28 至 30
+是协议版本。bit 31 保留且必须为零；当前版本为 2。
 
 C 侧先拒绝未知位、错误版本、非法 `number_pad`、冲突或空的 pickup 选择，
 再在当前 C 调用栈内通过 `parseoptions()` 应用完整更新。应用后重新调用

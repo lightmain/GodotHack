@@ -181,6 +181,12 @@ export function GameScreen({
     function handleKeyDown(event: KeyboardEvent): void {
       if (pauseView !== null) return;
       if (snapshot.inputRequest?.kind === "line") return;
+      if (
+        event.target instanceof Element
+        && event.target.closest("[data-browser-keyboard]")
+      ) {
+        return;
+      }
       if (snapshot.modal?.kind === "menu" || snapshot.modal?.kind === "extcmd") {
         return;
       }

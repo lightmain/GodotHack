@@ -9,6 +9,7 @@ import {
   createSessionManager,
   type SessionManagerOptions,
 } from "./session-manager";
+import { createIsolatedGameLock } from "./session-manager.test-fixtures";
 
 interface SaveIdentity {
   playerName: string;
@@ -126,6 +127,7 @@ function createManager(
     createSessionId: () => "session-1",
     createStorageService: () => storage as never,
     dispatch,
+    gameLock: createIsolatedGameLock(),
     moduleFactory: vi.fn(async () => createModule()),
   };
   return {

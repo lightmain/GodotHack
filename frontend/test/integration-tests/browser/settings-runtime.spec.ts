@@ -19,9 +19,14 @@ test("installs current settings for new and continued games", async ({ page }) =
   await page.getByRole("combobox", { name: "Movement keys" })
     .selectOption("1");
   await page.getByRole("checkbox", { name: "Show turn count" }).check();
+  await page.getByRole("checkbox", { name: "Permanent inventory" }).check();
   await page.getByRole("button", { name: "Apply" }).click();
 
   await startWithoutTutorial(page, name);
+  const inventory = page.getByRole("region", { name: "Inventory" });
+  const retainedItem = await inventory.locator(
+    ".permanent-inventory-item:not(.permanent-inventory-heading)",
+  ).first().textContent();
   await expect(page.locator(".nh-shell")).toHaveAttribute(
     "data-number-pad",
     "on",
@@ -32,6 +37,7 @@ test("installs current settings for new and continued games", async ({ page }) =
   ).toHaveCount(0);
 
   await saveAndReturnHome(page);
+  await expect(inventory).toHaveCount(0);
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByRole("combobox", { name: "Movement keys" })
     .selectOption("0");
@@ -39,6 +45,8 @@ test("installs current settings for new and continued games", async ({ page }) =
   await page.getByRole("button", { name: "Apply" }).click();
 
   await continueSavedGame(page, name);
+  await expect(inventory).toBeVisible();
+  await expect(inventory).toContainText(retainedItem ?? "");
   await expect(page.getByLabel(new RegExp(`${name} the .+, \\d+% HP`)))
     .toBeVisible({ timeout: 15_000 });
   await expect(page.locator(".nh-shell")).toHaveAttribute(
@@ -62,7 +70,7 @@ test("renders and collapses the core permanent inventory without a modal", async
   await page.getByRole("checkbox", { name: "Permanent inventory" }).check();
   await page.getByRole("button", { name: "Apply" }).click();
 
-  await startWithoutTutorial(page, "PermInventory");
+  await startWithoutTutorial(page, "PermInventory-Wiz");
   const inventory = page.getByRole("region", { name: "Inventory" });
   await expect(inventory).toBeVisible();
   await expect(inventory).toContainText(/\d+ items?/);
@@ -74,6 +82,78 @@ test("renders and collapses the core permanent inventory without a modal", async
   expect((mapBox?.x ?? 0) + (mapBox?.width ?? 0) / 2).toBeLessThan(
     (viewport?.width ?? 0) / 2 - 200,
   );
+
+  await inventory.focus();
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("button", { name: "Collapse inventory" }),
+  ).toBeFocused();
+  await inventory.focus();
+  const pageDownDefaultPrevented = page.evaluate(() =>
+    new Promise<boolean>((resolve) => {
+      globalThis.addEventListener("keydown", (event) => {
+        resolve(event.defaultPrevented);
+      }, { once: true });
+    }));
+  await page.keyboard.press("PageDown");
+  expect(await pageDownDefaultPrevented).toBe(false);
+
+  const inventoryRows = inventory.locator(
+    ".permanent-inventory-item:not(.permanent-inventory-heading)",
+  );
+  const allCount = await inventoryRows.count();
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  await setInventoryMode(page, "full");
+  const fullCount = await inventoryRows.count();
+  expect(fullCount).toBeGreaterThanOrEqual(allCount);
+
+  await setInventoryMode(page, "in-use");
+  await expect(inventory).toContainText(/being worn|weapon in hand/i);
+  const inUseCount = await inventoryRows.count();
+  expect(inUseCount).toBeGreaterThan(0);
+  expect(inUseCount).toBeLessThan(fullCount);
+
+  await setInventoryMode(page, "all");
+  await expect(inventoryRows).toHaveCount(allCount);
+
+  const wornRow = inventoryRows.filter({ hasText: "being worn" }).first();
+  await expect(wornRow).toBeVisible();
+  const wornText = (await wornRow.textContent()) ?? "";
+  const wornKey = (await wornRow.locator(
+    ".permanent-inventory-key",
+  ).textContent())?.trim();
+  expect(wornKey).toMatch(/^[a-zA-Z]$/);
+  await page.keyboard.press("T");
+  await page.keyboard.press(wornKey!);
+  await expect(inventory).not.toContainText(wornText);
+  await page.keyboard.press("W");
+  await page.keyboard.press(wornKey!);
+  await expect(inventory).toContainText(wornText);
+  await expect(page.locator(".nh-shell")).toHaveAttribute(
+    "data-command-input",
+    "ready",
+  );
+
+  const countBeforeDrop = await inventoryRows.count();
+  await page.keyboard.press("d");
+  await expect(page.locator(".nh-prompt")).toContainText(
+    /What do you want to drop/,
+  );
+  await page.keyboard.press("Shift+Slash");
+  const dropMenu = page.locator(".nh-dialog.nh-menu");
+  await expect(dropMenu).toBeVisible();
+  await dropMenu.locator(".nh-menu-item")
+    .filter({ hasNotText: /being worn/ })
+    .last()
+    .click();
+  await expect(inventoryRows).toHaveCount(countBeforeDrop - 1);
+  await page.keyboard.press(",");
+  const pickupMenu = page.locator(".nh-dialog.nh-menu");
+  if (await pickupMenu.isVisible()) {
+    await pickupMenu.locator(".nh-menu-item").first().click();
+  }
+  await expect(inventoryRows).toHaveCount(countBeforeDrop);
 
   await page.getByRole("button", { name: "Collapse inventory" }).click();
   await expect(
@@ -104,6 +184,9 @@ test("renders and collapses the core permanent inventory without a modal", async
   await expect(inventory).toHaveCSS("border-left-width", "1px");
   await expect(inventory).toHaveCSS("border-radius", "4px");
 
+  expect(await inventory.evaluate(
+    (panel) => !panel.contains(document.activeElement),
+  )).toBe(true);
   await page.keyboard.press("i");
   await expect(page.locator(".nh-dialog.nh-menu")).toBeVisible();
   await expect(page.locator(".nh-terminal")).toHaveAttribute("inert", "");
@@ -123,7 +206,7 @@ async function startWithoutTutorial(page: Page, name: string): Promise<void> {
   await nameInput.fill(name);
   await nameInput.press("Enter");
 
-  await expect(page.getByText(/Shall I pick character's/)).toBeVisible();
+  await expect(page.getByText(/Shall I pick/)).toBeVisible();
   await page.keyboard.press("y");
   await expect(
     page.getByRole("dialog", { name: "Is this ok? [ynq]" }),
@@ -132,4 +215,28 @@ async function startWithoutTutorial(page: Page, name: string): Promise<void> {
   await expect(page.locator(".nh-text-dialog")).toBeVisible();
   await page.keyboard.press("Enter");
   await expect(page.locator(".nh-hp-bar")).toBeVisible();
+}
+
+/**
+ * Apply one permanent-inventory mode through the in-game Settings boundary.
+ * @param page - running game page.
+ * @param mode - select value exposed by perminv_mode.
+ */
+async function setInventoryMode(
+  page: Page,
+  mode: "all" | "full" | "in-use",
+): Promise<void> {
+  await page.keyboard.press("Escape");
+  const pause = page.getByRole("dialog", { name: "Game paused" });
+  await expect(pause).toBeVisible();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("combobox", { name: "Inventory contents" })
+    .selectOption(mode);
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page.locator(".nh-shell")).toHaveAttribute(
+    "data-settings-status",
+    "applied",
+  );
+  await page.getByRole("button", { name: "Resume" }).click();
+  await expect(pause).toHaveCount(0);
 }

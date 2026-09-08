@@ -57,6 +57,7 @@ describe("PermanentInventoryPanel", () => {
 
     expect(html).toContain('role="region"');
     expect(html).toContain('aria-label="Inventory"');
+    expect(html).toContain("data-browser-keyboard");
     expect(html).toContain('tabindex="0"');
     expect(html).toMatch(/1 item/);
     expect(html).toContain('aria-label="Collapse inventory"');

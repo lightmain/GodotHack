@@ -27,6 +27,7 @@ export function PermanentInventoryPanel({
     <aside
       aria-label="Inventory"
       className={`permanent-inventory permanent-inventory-${position}${collapsed ? " permanent-inventory-collapsed" : ""}`}
+      data-browser-keyboard
       data-position={position}
       role="region"
       tabIndex={collapsed ? -1 : 0}
@@ -38,7 +39,10 @@ export function PermanentInventoryPanel({
         </div>
         <button
           aria-label={toggleLabel}
-          onClick={() => onCollapsedChange(!collapsed)}
+          onClick={(event) => {
+            event.currentTarget.blur();
+            onCollapsedChange(!collapsed);
+          }}
           title={toggleLabel}
           type="button"
         >

@@ -43,7 +43,10 @@ interface SettingsScreenProps {
   getDiagnosticCount?: () => number;
   loadStatus: ProfileLoadStatus;
   moduleId: string;
-  onApply(profile: BlissHackProfileV1): Promise<BlissHackProfileV1>;
+  onApply(
+    profile: BlissHackProfileV1,
+    baseProfile: BlissHackProfileV1,
+  ): Promise<BlissHackProfileV1>;
   onBack(): void;
   onClearLocalData?: () => Promise<void>;
   onExportFullBackup?: () => Promise<FullBackupExport>;
@@ -135,6 +138,7 @@ export function SettingsScreen({
   storageAvailable: saveStorageAvailable = true,
 }: SettingsScreenProps) {
   const [draft, setDraft] = useState(() => validateProfile(profile));
+  const draftBaseProfile = useRef(validateProfile(profile));
   const [confirmation, setConfirmation] = useState<Confirmation>(null);
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -186,12 +190,16 @@ export function SettingsScreen({
     setSuccess(null);
     setProfilePending(true);
     try {
-      const saved = await onApply(candidate);
+      const saved = await onApply(candidate, draftBaseProfile.current);
+      draftBaseProfile.current = saved;
       setDraft(saved);
       setSuccess(message);
       return true;
     } catch (error) {
       if (error instanceof GameLockCancelledError) return false;
+      if (error instanceof ProfileStaleError && error.latestProfile) {
+        draftBaseProfile.current = error.latestProfile;
+      }
       setError(error instanceof ProfileStaleError
         ? "Settings changed in another page. Review your changes and try again."
         : "Settings could not be saved. Your previous settings are unchanged.");
@@ -572,10 +580,18 @@ export function SettingsScreen({
             dirty={dirty}
             getDiagnosticCount={getDiagnosticCount}
             onApplyProfile={(candidate) => {
-              return onApply(candidate).then((saved) => {
-                setDraft(saved);
-                return saved;
-              });
+              return onApply(candidate, draftBaseProfile.current)
+                .then((saved) => {
+                  draftBaseProfile.current = saved;
+                  setDraft(saved);
+                  return saved;
+                })
+                .catch((error: unknown) => {
+                  if (error instanceof ProfileStaleError && error.latestProfile) {
+                    draftBaseProfile.current = error.latestProfile;
+                  }
+                  throw error;
+                });
             }}
             onClearLocalData={onClearLocalData}
             onExportFullBackup={onExportFullBackup}
