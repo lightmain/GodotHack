@@ -139,6 +139,7 @@ export function SettingsScreen({
 }: SettingsScreenProps) {
   const [draft, setDraft] = useState(() => validateProfile(profile));
   const draftBaseProfile = useRef(validateProfile(profile));
+  const previousProfile = useRef(validateProfile(profile));
   const [confirmation, setConfirmation] = useState<Confirmation>(null);
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -152,6 +153,23 @@ export function SettingsScreen({
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
+
+  useEffect(() => {
+    const previous = previousProfile.current;
+    const next = validateProfile(profile);
+    previousProfile.current = next;
+    const previousValue = JSON.stringify(previous);
+    const nextValue = JSON.stringify(next);
+    const draftValue = JSON.stringify(draft);
+    if (draftValue === nextValue) {
+      draftBaseProfile.current = next;
+    }
+    if (previousValue === nextValue) return;
+    if (draftValue === previousValue) {
+      draftBaseProfile.current = next;
+      setDraft(next);
+    }
+  }, [draft, profile]);
 
   useEffect(() => {
     if (!dirty) return;

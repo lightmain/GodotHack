@@ -82,6 +82,7 @@ export function PermanentInventoryPanel({
                       textAttributeClass(item.attribute),
                     ].filter(Boolean).join(" ")}
                     key={`${inventory.revision}-${index}`}
+                    onFocus={(event) => event.currentTarget.blur()}
                     tabIndex={-1}
                     type="button"
                   >

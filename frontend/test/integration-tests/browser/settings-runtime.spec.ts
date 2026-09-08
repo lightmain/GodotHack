@@ -89,14 +89,18 @@ test("renders and collapses the core permanent inventory without a modal", async
     page.getByRole("button", { name: "Collapse inventory" }),
   ).toBeFocused();
   await inventory.focus();
-  const pageDownDefaultPrevented = page.evaluate(() =>
-    new Promise<boolean>((resolve) => {
-      globalThis.addEventListener("keydown", (event) => {
-        resolve(event.defaultPrevented);
-      }, { once: true });
-    }));
+  await page.evaluate(() => {
+    document.documentElement.dataset.lastKeyDefaultPrevented = "";
+    globalThis.addEventListener("keydown", (event) => {
+      document.documentElement.dataset.lastKeyDefaultPrevented =
+        String(event.defaultPrevented);
+    }, { once: true });
+  });
   await page.keyboard.press("PageDown");
-  expect(await pageDownDefaultPrevented).toBe(false);
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-last-key-default-prevented",
+    "false",
+  );
 
   const permanentHeading = inventory.locator(".nh-menu-heading").first();
   await expect(permanentHeading).toHaveCSS("font-weight", "700");
@@ -123,6 +127,18 @@ test("renders and collapses the core permanent inventory without a modal", async
     "background-color",
     "rgb(27, 32, 35)",
   );
+  await page.evaluate(() => {
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  });
+  await page.mouse.click(
+    firstRowBox!.x + firstRowBox!.width / 2,
+    firstRowBox!.y + firstRowBox!.height / 2,
+  );
+  expect(await inventory.evaluate(
+    (panel) => !panel.contains(document.activeElement),
+  )).toBe(true);
   const allCount = await inventoryRows.count();
   await page.keyboard.press("Tab");
   await page.keyboard.press("Tab");

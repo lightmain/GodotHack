@@ -227,6 +227,85 @@ test("keeps the Settings draft baseline after exporting a newer profile", async 
   })).toBe("large");
 });
 
+test("synchronizes an untouched Settings draft after exporting a newer profile", async ({
+  context,
+  page,
+}) => {
+  await openHome(page, "clean-profile-export-first");
+  const second = await context.newPage();
+  await openHome(second, "clean-profile-export-second");
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await second.getByRole("button", { name: "Settings" }).click();
+  await second.getByRole("radio", { name: "Large" }).check();
+  await second.getByRole("button", { name: "Apply" }).click();
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export Profile" }).click();
+  await downloadPromise;
+
+  await expect(page.getByRole("radio", { name: "Large" })).toBeChecked();
+  await expect(page.getByText("No unsaved changes")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Apply" })).toBeDisabled();
+});
+
+test("advances the Settings baseline when an external profile matches the draft", async ({
+  context,
+  page,
+}) => {
+  await openHome(page, "matching-profile-export-first");
+  const second = await context.newPage();
+  await openHome(second, "matching-profile-export-second");
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("radio", { name: "Large" }).check();
+  await second.getByRole("button", { name: "Settings" }).click();
+  await second.getByRole("radio", { name: "Large" }).check();
+  await second.getByRole("button", { name: "Apply" }).click();
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export Profile" }).click();
+  await downloadPromise;
+  await expect(page.getByText("No unsaved changes")).toBeVisible();
+
+  await page.getByRole("radio", { name: "Small" }).check();
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page.getByRole("button", { name: "New Game" })).toBeVisible();
+  expect(await page.evaluate(() => {
+    const raw = localStorage.getItem("blisshack.profile.v1");
+    return raw ? JSON.parse(raw).interface.terminalFontSize : null;
+  })).toBe("small");
+});
+
+test("advances the Settings baseline after a draft manually matches an external profile", async ({
+  context,
+  page,
+}) => {
+  await openHome(page, "converged-profile-export-first");
+  const second = await context.newPage();
+  await openHome(second, "converged-profile-export-second");
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("radio", { name: "Small" }).check();
+  await second.getByRole("button", { name: "Settings" }).click();
+  await second.getByRole("radio", { name: "Large" }).check();
+  await second.getByRole("button", { name: "Apply" }).click();
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export Profile" }).click();
+  await downloadPromise;
+  await page.getByRole("radio", { name: "Large" }).check();
+  await expect(page.getByText("No unsaved changes")).toBeVisible();
+
+  await page.getByRole("radio", { name: "Small" }).check();
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page.getByRole("button", { name: "New Game" })).toBeVisible();
+  expect(await page.evaluate(() => {
+    const raw = localStorage.getItem("blisshack.profile.v1");
+    return raw ? JSON.parse(raw).interface.terminalFontSize : null;
+  })).toBe("small");
+});
+
 test("keeps single-page play and profile storage available without Web Locks", async ({
   page,
 }) => {
