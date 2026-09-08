@@ -53,12 +53,17 @@ const windowMessages = [];
 const inputStates = [];
 const runtimeSettingsSnapshots = [];
 const runtimeSettingsResults = [];
+const permanentInventoryUpdates = [];
 let queuedRuntimeSettings = 0;
 
-const RUNTIME_SETTINGS_VERSION = 1 << 28;
+const RUNTIME_SETTINGS_VERSION = 2 << 28;
 const RUNTIME_SETTINGS_PENDING = 1 << 0;
 const RUNTIME_SETTINGS_AUTOPICKUP = 1 << 1;
 const RUNTIME_SETTINGS_PICKUP_ALL = 1 << 6;
+const RUNTIME_SETTINGS_PERM_INVENT = 1 << 25;
+const RUNTIME_SETTINGS_PERMINV_ALL = 1 << 26;
+const RUNTIME_SETTINGS_PERMINV_FULL = 2 << 26;
+const RUNTIME_SETTINGS_PERMINV_MODE_MASK = 3 << 26;
 
 /**
  * Wait until the core reaches another keyboard-facing callback.
@@ -170,7 +175,32 @@ async function blissCallback(name, ...args) {
         pendingInput = resolve;
       });
 
+    case "shim_start_menu":
+      if ((args[1] & 1) !== 0) {
+        permanentInventoryUpdates.push({ kind: "start", windowId: args[0] });
+      }
+      return undefined;
+
+    case "shim_add_menu":
+      if (permanentInventoryUpdates.some(
+        (event) => event.kind === "start" && event.windowId === args[0],
+      )) {
+        permanentInventoryUpdates.push({
+          kind: "item",
+          windowId: args[0],
+          text: String(args[7] ?? ""),
+        });
+      }
+      return undefined;
+
     case "shim_select_menu":
+      if (args[1] === 0) {
+        permanentInventoryUpdates.push({
+          kind: "commit",
+          windowId: args[0],
+        });
+        return 0;
+      }
       return -1; // cancel/dismiss
     case "shim_message_menu":
     case "shim_doprev_message":
@@ -236,6 +266,8 @@ async function run() {
     "OPTIONS=sortpack",
     "OPTIONS=showexp",
     "OPTIONS=time",
+    "OPTIONS=perminv_mode:all",
+    "OPTIONS=perm_invent",
     "OPTIONS=!tutorial",
     "",
   ].join("\n");
@@ -336,6 +368,12 @@ async function run() {
     globalThis.nethackGlobal?.globals?.flags?.time === true,
     "time from runtime .nethackrc reached NetHack globals",
   );
+  assert(
+    permanentInventoryUpdates.some((event) => event.kind === "start")
+      && permanentInventoryUpdates.some((event) => event.kind === "item")
+      && permanentInventoryUpdates.some((event) => event.kind === "commit"),
+    "perm_invent creates, populates, and commits a persistent inventory menu",
+  );
 
   // --- Input handling ---
   console.log("\n--- Input handling ---");
@@ -361,7 +399,8 @@ async function run() {
     RUNTIME_SETTINGS_VERSION
     | RUNTIME_SETTINGS_PENDING
     | RUNTIME_SETTINGS_PICKUP_ALL
-    | (1 << 25)
+    | RUNTIME_SETTINGS_PERMINV_ALL
+    | (1 << 31)
   ) >>> 0;
   const resultsBeforeInvalidUpdate = runtimeSettingsResults.length;
   await sendKeyAndWait(32);
@@ -380,6 +419,8 @@ async function run() {
     | RUNTIME_SETTINGS_PENDING
     | RUNTIME_SETTINGS_AUTOPICKUP
     | RUNTIME_SETTINGS_PICKUP_ALL
+    | RUNTIME_SETTINGS_PERM_INVENT
+    | RUNTIME_SETTINGS_PERMINV_ALL
   ) >>> 0;
   const appliedSettings = (
     dynamicSettings & ~RUNTIME_SETTINGS_PENDING
@@ -409,10 +450,71 @@ async function run() {
     "dynamic settings application emits no interactive option messages",
   );
 
+  const fullInventorySettings = (
+    (appliedSettings & ~RUNTIME_SETTINGS_PERMINV_MODE_MASK)
+    | RUNTIME_SETTINGS_PERMINV_FULL
+  ) >>> 0;
+  let commitsBeforeUpdate = permanentInventoryUpdates.filter(
+    (event) => event.kind === "commit",
+  ).length;
+  queuedRuntimeSettings = (
+    fullInventorySettings | RUNTIME_SETTINGS_PENDING
+  ) >>> 0;
+  await sendKeyAndWait(32);
+  assert(
+    runtimeSettingsResults.at(-1)?.success === 1
+      && runtimeSettingsResults.at(-1)?.snapshot === fullInventorySettings,
+    "runtime perminv_mode change is accepted",
+  );
+  assert(
+    permanentInventoryUpdates.filter(
+      (event) => event.kind === "commit",
+    ).length > commitsBeforeUpdate,
+    "runtime perminv_mode change republishes the permanent inventory",
+  );
+
+  const disabledInventorySettings = (
+    fullInventorySettings & ~RUNTIME_SETTINGS_PERM_INVENT
+  ) >>> 0;
+  commitsBeforeUpdate = permanentInventoryUpdates.filter(
+    (event) => event.kind === "commit",
+  ).length;
+  queuedRuntimeSettings = (
+    disabledInventorySettings | RUNTIME_SETTINGS_PENDING
+  ) >>> 0;
+  await sendKeyAndWait(32);
+  assert(
+    runtimeSettingsResults.at(-1)?.success === 1
+      && runtimeSettingsResults.at(-1)?.snapshot === disabledInventorySettings,
+    "runtime permanent inventory disable is accepted",
+  );
+  assert(
+    permanentInventoryUpdates.filter(
+      (event) => event.kind === "commit",
+    ).length === commitsBeforeUpdate,
+    "disabling permanent inventory does not publish stale menu contents",
+  );
+
+  queuedRuntimeSettings = (
+    fullInventorySettings | RUNTIME_SETTINGS_PENDING
+  ) >>> 0;
+  await sendKeyAndWait(32);
+  assert(
+    runtimeSettingsResults.at(-1)?.success === 1
+      && runtimeSettingsResults.at(-1)?.snapshot === fullInventorySettings,
+    "runtime permanent inventory re-enable is accepted",
+  );
+  assert(
+    permanentInventoryUpdates.filter(
+      (event) => event.kind === "commit",
+    ).length > commitsBeforeUpdate,
+    "runtime permanent inventory re-enable republishes its menu",
+  );
+
   await sendKeyAndWait(64); // @ toggles autopickup
   assert(
     runtimeSettingsSnapshots.at(-1)
-      === (appliedSettings & ~RUNTIME_SETTINGS_AUTOPICKUP) >>> 0,
+      === (fullInventorySettings & ~RUNTIME_SETTINGS_AUTOPICKUP) >>> 0,
     "native @ command is reflected by the next settings snapshot",
   );
   assert(

@@ -43,7 +43,10 @@ interface SettingsScreenProps {
   getDiagnosticCount?: () => number;
   loadStatus: ProfileLoadStatus;
   moduleId: string;
-  onApply(profile: BlissHackProfileV1): Promise<BlissHackProfileV1>;
+  onApply(
+    profile: BlissHackProfileV1,
+    baseProfile: BlissHackProfileV1,
+  ): Promise<BlissHackProfileV1>;
   onBack(): void;
   onClearLocalData?: () => Promise<void>;
   onExportFullBackup?: () => Promise<FullBackupExport>;
@@ -135,6 +138,8 @@ export function SettingsScreen({
   storageAvailable: saveStorageAvailable = true,
 }: SettingsScreenProps) {
   const [draft, setDraft] = useState(() => validateProfile(profile));
+  const draftBaseProfile = useRef(validateProfile(profile));
+  const previousProfile = useRef(validateProfile(profile));
   const [confirmation, setConfirmation] = useState<Confirmation>(null);
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -148,6 +153,23 @@ export function SettingsScreen({
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
+
+  useEffect(() => {
+    const previous = previousProfile.current;
+    const next = validateProfile(profile);
+    previousProfile.current = next;
+    const previousValue = JSON.stringify(previous);
+    const nextValue = JSON.stringify(next);
+    const draftValue = JSON.stringify(draft);
+    if (draftValue === nextValue) {
+      draftBaseProfile.current = next;
+    }
+    if (previousValue === nextValue) return;
+    if (draftValue === previousValue) {
+      draftBaseProfile.current = next;
+      setDraft(next);
+    }
+  }, [draft, profile]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -186,12 +208,16 @@ export function SettingsScreen({
     setSuccess(null);
     setProfilePending(true);
     try {
-      const saved = await onApply(candidate);
+      const saved = await onApply(candidate, draftBaseProfile.current);
+      draftBaseProfile.current = saved;
       setDraft(saved);
       setSuccess(message);
       return true;
     } catch (error) {
       if (error instanceof GameLockCancelledError) return false;
+      if (error instanceof ProfileStaleError && error.latestProfile) {
+        draftBaseProfile.current = error.latestProfile;
+      }
       setError(error instanceof ProfileStaleError
         ? "Settings changed in another page. Review your changes and try again."
         : "Settings could not be saved. Your previous settings are unchanged.");
@@ -354,6 +380,25 @@ export function SettingsScreen({
                 updateInterface(setDraft, { followPlayer });
               }}
             />
+            <SegmentedField
+              label="Inventory position"
+              name="inventory-position"
+              onChange={(permanentInventoryPosition) => {
+                updateInterface(setDraft, { permanentInventoryPosition });
+              }}
+              options={[
+                { value: "right", label: "Right" },
+                { value: "below", label: "Below" },
+              ]}
+              value={draft.interface.permanentInventoryPosition}
+            />
+            <ToggleField
+              checked={draft.interface.permanentInventoryCollapsed}
+              label="Start inventory collapsed"
+              onChange={(permanentInventoryCollapsed) => {
+                updateInterface(setDraft, { permanentInventoryCollapsed });
+              }}
+            />
           </div>
         </section>
 
@@ -478,7 +523,30 @@ export function SettingsScreen({
                 label="Show turn count"
                 onChange={(showTime) => updateNetHack(setDraft, { showTime })}
               />
+              <ToggleField
+                checked={draft.nethack.permInvent}
+                label="Permanent inventory"
+                onChange={(permInvent) => {
+                  updateNetHack(setDraft, { permInvent });
+                }}
+              />
             </div>
+            <label className="settings-field settings-select">
+              <span>Inventory contents</span>
+              <select
+                onChange={(event) => {
+                  updateNetHack(setDraft, {
+                    perminvMode: event.currentTarget.value as
+                      NetHackSettingsV1["perminvMode"],
+                  });
+                }}
+                value={draft.nethack.perminvMode}
+              >
+                <option value="all">All except gold</option>
+                <option value="full">Full including gold</option>
+                <option value="in-use">Items in use</option>
+              </select>
+            </label>
           </div>
         </section>
 
@@ -530,10 +598,18 @@ export function SettingsScreen({
             dirty={dirty}
             getDiagnosticCount={getDiagnosticCount}
             onApplyProfile={(candidate) => {
-              return onApply(candidate).then((saved) => {
-                setDraft(saved);
-                return saved;
-              });
+              return onApply(candidate, draftBaseProfile.current)
+                .then((saved) => {
+                  draftBaseProfile.current = saved;
+                  setDraft(saved);
+                  return saved;
+                })
+                .catch((error: unknown) => {
+                  if (error instanceof ProfileStaleError && error.latestProfile) {
+                    draftBaseProfile.current = error.latestProfile;
+                  }
+                  throw error;
+                });
             }}
             onClearLocalData={onClearLocalData}
             onExportFullBackup={onExportFullBackup}

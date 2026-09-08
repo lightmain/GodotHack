@@ -104,6 +104,27 @@ M win/shim/winshim.c
   - `frontend/test/integration-tests/wasm-test.mjs`
   - Settings 与暂停相关 Playwright 流程
 
+### 2.6 永久背包能力与运行时配置
+
+- **文件**：`win/shim/winshim.c`
+- **引入提交**：阶段五提交 `feat: add permanent inventory panel`
+- **目的**：
+  - 只在 Emscripten shim window capability 中声明 `WC_PERM_INVENT`。
+  - 把 `perm_invent` 和 `perminv_mode` 加入 32-bit Settings 协议版本 2。
+  - 在命令边界通过 `parseoptions()` 应用选项，并以 `update_inventory()`
+    触发开启和模式变化后的同步重填。
+  - 保留 `shim_update_inventory()` 直接调用 `repopulate_perminvent()` 的
+    Asyncify 非重入路径。
+- **源码范围**：不修改 `src/options.c`、`src/invent.c` 或 raw save 格式。
+- **行为依据**：
+  `doc/BlissHack/shim-interface-reference.md` 第 2.15 节和
+  `doc/BlissHack/plans/in-prealpha-3/permanent-inventory.md`。
+- **回归测试**：
+  - `frontend/src/settings/runtime-settings-protocol.test.ts`
+  - `frontend/src/game-state.test.ts`
+  - `frontend/src/nethack-bridge.test.ts`
+  - `frontend/test/integration-tests/wasm-test.mjs`
+
 ## 3. 上游合并检查
 
 每次从 `upstream/NetHack-5.0` 合并后必须：

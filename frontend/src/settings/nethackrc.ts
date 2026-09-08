@@ -25,6 +25,8 @@ export function generateNetHackRc(settings: NetHackSettingsV1): string {
     booleanOption("sortpack", normalized.sortpack),
     booleanOption("showexp", normalized.showExperience),
     booleanOption("time", normalized.showTime),
+    `OPTIONS=perminv_mode:${normalized.perminvMode}`,
+    booleanOption("perm_invent", normalized.permInvent),
   ];
   // Omitting tutorial preserves NetHack's ask state; OPTIONS=tutorial forces it.
   if (!normalized.tutorial) lines.push("OPTIONS=!tutorial");

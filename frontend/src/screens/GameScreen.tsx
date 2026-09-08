@@ -16,11 +16,6 @@ import {
 } from "lucide-react";
 import "../App.css";
 import {
-  ATR_BOLD,
-  ATR_DIM,
-  ATR_INVERSE,
-  ATR_ITALIC,
-  ATR_ULINE,
   BL_CONDITION,
   PICK_ANY,
   PICK_NONE,
@@ -60,26 +55,9 @@ import {
   submitLine,
   submitMenuSelection,
 } from "../nethack-bridge";
+import { colorClass, textAttributeClass } from "../text-styling";
 import { SettingsScreen } from "./SettingsScreen";
-
-const COLOR_NAMES = [
-  "black",
-  "red",
-  "green",
-  "brown",
-  "blue",
-  "magenta",
-  "cyan",
-  "gray",
-  "dark-gray",
-  "bright-red",
-  "bright-green",
-  "yellow",
-  "bright-blue",
-  "bright-magenta",
-  "bright-cyan",
-  "white",
-] as const;
+import { PermanentInventoryPanel } from "./PermanentInventoryPanel";
 
 const CONDITION_NAMES = [
   "Bare",
@@ -180,6 +158,12 @@ export function GameScreen({
     function handleKeyDown(event: KeyboardEvent): void {
       if (pauseView !== null) return;
       if (snapshot.inputRequest?.kind === "line") return;
+      if (
+        event.target instanceof Element
+        && event.target.closest("[data-browser-keyboard]")
+      ) {
+        return;
+      }
       if (snapshot.modal?.kind === "menu" || snapshot.modal?.kind === "extcmd") {
         return;
       }
@@ -224,6 +208,19 @@ export function GameScreen({
     return saved;
   }
 
+  /** Persist the panel collapse preference without entering the WASM runtime. */
+  function setInventoryCollapsed(collapsed: boolean): void {
+    void onApplyProfile(validateProfile({
+      ...gameProfile,
+      interface: {
+        ...gameProfile.interface,
+        permanentInventoryCollapsed: collapsed,
+      },
+    })).catch(() => {
+      // Keep the current profile when browser persistence rejects the update.
+    });
+  }
+
   return (
     <main
       className={`nh-shell nh-font-${settings.terminalFontSize}`}
@@ -244,19 +241,38 @@ export function GameScreen({
           {snapshot.error}
         </section>
       ) : (
-        <section className="nh-terminal" aria-label="NetHack terminal">
+        <section
+          aria-label="NetHack terminal"
+          className="nh-terminal"
+          inert={snapshot.modal !== null || pauseView !== null}
+        >
           <MessageArea
             historyLines={settings.messageHistoryLines}
             messages={snapshot.messages}
           />
-          <MapGrid
-            clipCenter={snapshot.clipCenter}
-            cursor={snapshot.cursor}
-            followPlayer={settings.followPlayer}
-            layoutKey={`${settings.terminalFontSize}:${settings.messageHistoryLines}`}
-            map={snapshot.map}
-          />
-          <StatusArea status={snapshot.status} />
+          <div
+            className={`nh-playfield nh-playfield-${settings.permanentInventoryPosition}`}
+          >
+            <div className="nh-playfield-main">
+              <MapGrid
+                clipCenter={snapshot.clipCenter}
+                cursor={snapshot.cursor}
+                followPlayer={settings.followPlayer}
+                layoutKey={`${settings.terminalFontSize}:${settings.messageHistoryLines}`}
+                map={snapshot.map}
+              />
+              <StatusArea status={snapshot.status} />
+            </div>
+            {gameProfile.nethack.permInvent
+              && snapshot.permanentInventory && (
+              <PermanentInventoryPanel
+                collapsed={settings.permanentInventoryCollapsed}
+                inventory={snapshot.permanentInventory}
+                onCollapsedChange={setInventoryCollapsed}
+                position={settings.permanentInventoryPosition}
+              />
+            )}
+          </div>
           <InputArea request={snapshot.inputRequest} />
         </section>
       )}
@@ -999,6 +1015,11 @@ function MenuOverlay({ window, how }: { window: WindowState; how: number }) {
                 onMouseEnter={() => setFocusIndex(index)}
                 type="button"
               >
+                <span aria-hidden="true" className="nh-menu-glyph">
+                  {item.glyph?.ttyChar
+                    ? String.fromCodePoint(item.glyph.ttyChar)
+                    : " "}
+                </span>
                 <span className="nh-menu-mark">
                   {how === PICK_ANY ? (selected.has(index) ? "+" : "-") : " "}
                 </span>
@@ -1138,32 +1159,6 @@ function parsedCount(value: string): number {
   if (value === "") return -1;
   const count = Number.parseInt(value, 10);
   return Number.isFinite(count) && count > 0 ? count : -1;
-}
-
-/**
- * Convert a NetHack color index into a CSS class.
- * @param value - CLR_* index.
- * @returns a stable class name.
- */
-function colorClass(value: number): string {
-  const name = COLOR_NAMES[value] ?? "gray";
-  return `nh-color-${name}`;
-}
-
-/**
- * Convert ATR_* flags into CSS classes.
- * @param attribute - NetHack text attributes.
- * @returns space-separated CSS classes.
- */
-function textAttributeClass(attribute: number): string {
-  const classes: string[] = [];
-  const base = attribute & 0x0f;
-  if (base === ATR_BOLD) classes.push("nh-bold");
-  if (base === ATR_DIM) classes.push("nh-dim");
-  if (base === ATR_ITALIC) classes.push("nh-italic");
-  if (base === ATR_ULINE) classes.push("nh-underline");
-  if (base === ATR_INVERSE) classes.push("nh-inverse");
-  return classes.join(" ");
 }
 
 /**

@@ -805,6 +805,8 @@ describe("runtime settings synchronization", () => {
       sortpack: true,
       showExperience: false,
       showTime: true,
+      permInvent: false,
+      perminvMode: "all",
     });
     expect(getSnapshot().runtimeSettingsStatus).toBe("applied");
 
@@ -893,14 +895,118 @@ describe("menus", () => {
     await expect(display).resolves.toBe(0);
   });
 
-  it("does not block or open a modal for permanent inventory updates", async () => {
+  it("atomically replaces permanent inventory without blocking and preserves identity", async () => {
     const menu = await shimCallback("shim_create_nhwindow", NHW_MENU) as number;
     await shimCallback("shim_start_menu", menu, MENU_BEHAVE_PERMINV);
-    await shimCallback("shim_end_menu", menu, "");
+    await shimCallback(
+      "shim_add_menu",
+      menu,
+      0,
+      41,
+      "a".charCodeAt(0),
+      0,
+      0,
+      2,
+      "a - a mace",
+      1,
+    );
+    await shimCallback("shim_end_menu", menu, "Inventory");
 
-    await expect(shimCallback("shim_select_menu", menu, PICK_NONE, 0x200)).resolves.toBe(0);
+    expect(getSnapshot().permanentInventory).toBeNull();
+    await expect(shimCallback("shim_select_menu", menu, PICK_NONE, 0x200))
+      .resolves.toBe(0);
     expect(getSnapshot().modal).toBeNull();
-    expect(getSnapshot().inventoryWindowId).toBe(menu);
+    expect(isWaitingForInput()).toBe(false);
+    const first = getSnapshot().permanentInventory;
+    expect(first).toMatchObject({
+      revision: 1,
+      windowId: menu,
+      prompt: "Inventory",
+      items: [{
+        identifier: 41,
+        accelerator: "a".charCodeAt(0),
+        text: "a - a mace",
+      }],
+    });
+
+    await shimCallback("shim_start_menu", menu, MENU_BEHAVE_PERMINV);
+    await shimCallback(
+      "shim_add_menu",
+      menu,
+      0,
+      73,
+      "b".charCodeAt(0),
+      0,
+      0,
+      3,
+      "b - a wand",
+      0,
+    );
+    expect(getSnapshot().permanentInventory).toBe(first);
+    await shimCallback("shim_end_menu", menu, "Carrying");
+    await shimCallback("shim_select_menu", menu, PICK_NONE, 0);
+
+    expect(getSnapshot().permanentInventory).toMatchObject({
+      revision: 2,
+      items: [{
+        identifier: 73,
+        accelerator: "b".charCodeAt(0),
+        text: "b - a wand",
+      }],
+    });
+    expect(getSnapshot().permanentInventory?.items).toHaveLength(1);
+  });
+
+  it("rejects a permanent inventory menu with an interactive selection mode", async () => {
+    const inventory = await shimCallback(
+      "shim_create_nhwindow",
+      NHW_MENU,
+    ) as number;
+    await shimCallback(
+      "shim_start_menu",
+      inventory,
+      MENU_BEHAVE_PERMINV,
+    );
+    await shimCallback("shim_end_menu", inventory, "Inventory");
+
+    await expect(
+      shimCallback("shim_select_menu", inventory, PICK_ONE, 0),
+    ).resolves.toBe(-1);
+    expect(getSnapshot()).toMatchObject({
+      phase: "error",
+      error: "shim_select_menu: Permanent inventory menu requires PICK_NONE",
+    });
+    expect(getSnapshot().permanentInventory).toBeNull();
+    expect(getSnapshot().modal).toBeNull();
+    expect(isWaitingForInput()).toBe(false);
+  });
+
+  it("isolates ordinary menus and clears permanent inventory on destroy and reset", async () => {
+    const inventory = await shimCallback("shim_create_nhwindow", NHW_MENU) as number;
+    await shimCallback("shim_start_menu", inventory, MENU_BEHAVE_PERMINV);
+    await shimCallback("shim_end_menu", inventory, "Inventory");
+    await shimCallback("shim_select_menu", inventory, PICK_NONE, 0);
+    const committed = getSnapshot().permanentInventory;
+
+    const ordinary = await shimCallback("shim_create_nhwindow", NHW_MENU) as number;
+    await shimCallback("shim_start_menu", ordinary, 0);
+    await shimCallback("shim_end_menu", ordinary, "Ordinary");
+    const pending = shimCallback("shim_select_menu", ordinary, PICK_NONE, 0);
+    await expectPending(pending);
+    expect(getSnapshot().modal).toEqual({
+      kind: "menu",
+      windowId: ordinary,
+      how: PICK_NONE,
+    });
+    expect(getSnapshot().permanentInventory).toBe(committed);
+    dismissDisplay();
+    await pending;
+
+    await shimCallback("shim_destroy_nhwindow", inventory);
+    expect(getSnapshot().permanentInventory).toBeNull();
+
+    resetBridgeState();
+    expect(getSnapshot().permanentInventory).toBeNull();
   });
 
   it("implements message_menu PICK_NONE and PICK_ONE return contracts", async () => {

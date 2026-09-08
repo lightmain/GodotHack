@@ -8,6 +8,7 @@ import {
   type SessionHandle,
   type SessionManagerOptions,
 } from "./session-manager";
+import { createIsolatedGameLock } from "./session-manager.test-fixtures";
 
 interface ValidatedSave {
   path: string;
@@ -161,6 +162,7 @@ function createStageTwoManager(
     ...managerOptions
   } = options;
   return createSessionManager({
+    gameLock: createIsolatedGameLock(),
     ...managerOptions,
     ...(createStorage
       ? {

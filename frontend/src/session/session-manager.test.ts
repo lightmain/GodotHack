@@ -24,6 +24,7 @@ import type {
   SaveListEntry,
   StorageService,
 } from "../storage/storage-service";
+import { createIsolatedGameLock } from "./session-manager.test-fixtures";
 
 interface ModuleHarness {
   module: EmscriptenModule;
@@ -185,6 +186,7 @@ function createHarness(
     }),
     diagnostics,
     dispatch,
+    gameLock: createIsolatedGameLock(),
     moduleFactory: factory,
     ...overrides,
   });

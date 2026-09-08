@@ -36,9 +36,16 @@ export interface ProfileStore {
 
 /** A Settings draft was based on a profile replaced by another page. */
 export class ProfileStaleError extends Error {
-  constructor() {
+  readonly latestProfile: BlissHackProfileV1 | null;
+
+  /**
+   * Create a stale-draft error with the latest persisted profile when known.
+   * @param latestProfile - authoritative profile observed under the save lock.
+   */
+  constructor(latestProfile: BlissHackProfileV1 | null = null) {
     super("The saved profile changed after Settings was opened");
     this.name = "ProfileStaleError";
+    this.latestProfile = latestProfile;
   }
 }
 

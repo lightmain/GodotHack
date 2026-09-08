@@ -3,6 +3,7 @@ import { createDefaultProfile } from "./profile";
 import {
   createProfileStore,
   PROFILE_STORAGE_KEY,
+  ProfileStaleError,
   type ProfileStorage,
 } from "./profile-store";
 
@@ -130,5 +131,19 @@ describe("profile store replacement", () => {
       .toThrow("quota exceeded");
     expect(() => createProfileStore(null).replace(profile))
       .toThrow("unavailable");
+  });
+});
+
+describe("ProfileStaleError", () => {
+  it("retains the authoritative profile for an explicit retry", () => {
+    const latest = createDefaultProfile();
+    latest.interface.terminalFontSize = "large";
+
+    const error = new ProfileStaleError(latest);
+
+    expect(error.latestProfile).toBe(latest);
+    expect(error.message).toBe(
+      "The saved profile changed after Settings was opened",
+    );
   });
 });

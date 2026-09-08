@@ -42,6 +42,7 @@ export function GameLockConflictDialog({
     function handleKey(event: KeyboardEvent): void {
       if (event.key === "Escape" && !pendingRef.current) {
         event.preventDefault();
+        event.stopPropagation();
         cancelRef.current();
         return;
       }

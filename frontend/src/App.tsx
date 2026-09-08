@@ -298,14 +298,14 @@ function App({
   /** Save a profile under the shared lock or the active session lease. */
   function applyProfile(
     candidate: BlissHackProfileV1,
+    baseProfile = profile,
   ): Promise<BlissHackProfileV1> {
-    const baseProfile = profile;
     return runWithLockRetry(() =>
       sessionManager.runProfileOperation("profile-save", async () => {
         if (!sessionManager.getActiveSession()) {
           const latest = reloadProfile();
           if (JSON.stringify(latest) !== JSON.stringify(baseProfile)) {
-            throw new ProfileStaleError();
+            throw new ProfileStaleError(latest);
           }
         }
         return replaceProfile(candidate);

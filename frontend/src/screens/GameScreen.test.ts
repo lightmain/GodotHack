@@ -7,6 +7,7 @@ import {
   createWindow,
   NHW_MESSAGE,
   resetGameState,
+  showText,
 } from "../game-state";
 import { createDefaultProfile } from "../settings/profile";
 import { GameScreen } from "./GameScreen";
@@ -59,4 +60,18 @@ describe("GameScreen interface settings", () => {
       }
     },
   );
+
+  it("makes the terminal inert while a core modal is open", () => {
+    showText("Help", [{ text: "Modal content", attribute: ATR_NONE }]);
+
+    const html = renderToStaticMarkup(createElement(GameScreen, {
+      loadStatus: "loaded",
+      moduleId: "module-1",
+      onApplyProfile: async (candidate) => candidate,
+      profile: createDefaultProfile(),
+    }));
+
+    expect(html).toMatch(/<section[^>]*class="nh-terminal"[^>]*inert=""/);
+    expect(html).toContain('role="dialog"');
+  });
 });

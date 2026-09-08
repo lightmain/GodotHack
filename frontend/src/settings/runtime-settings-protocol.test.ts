@@ -42,6 +42,8 @@ describe("runtime settings protocol", () => {
         sortpack: false,
         showExperience: true,
         showTime: true,
+        permInvent: false,
+        perminvMode: "all",
       },
     });
     expect(decoded.settings).toEqual(runtimeSettingsFromProfile(profile));
@@ -90,13 +92,41 @@ describe("runtime settings protocol", () => {
     });
   });
 
+  it.each(["all", "full", "in-use"] as const)(
+    "round-trips enabled permanent inventory mode %s in protocol 2",
+    (perminvMode) => {
+      const settings = createDefaultProfile().nethack;
+      settings.permInvent = true;
+      settings.perminvMode = perminvMode;
+
+      const payload = encodeRuntimeSettings(settings, false);
+
+      expect((payload >>> 28) & 0b111).toBe(2);
+      expect(decodeRuntimeSettings(payload).settings).toMatchObject({
+        permInvent: true,
+        perminvMode,
+      });
+    },
+  );
+
+  it("normalizes the core none mode to a disabled all-mode profile value", () => {
+    const encoded = encodeRuntimeSettings(createDefaultProfile().nethack, false);
+    const nonePayload = encoded & ~((1 << 25) | (0b11 << 26));
+
+    expect(decodeRuntimeSettings(nonePayload).settings).toMatchObject({
+      permInvent: false,
+      perminvMode: "all",
+    });
+  });
+
   it.each([
-    0,
-    1 << 25,
-    (1 << 28) | (6 << 7) | (1 << 6),
-    (1 << 28) | (1 << 6) | (1 << 10),
-    1 << 28,
-  ])("rejects malformed payload %s", (payload) => {
+    ["protocol 1", (1 << 28) | (1 << 6)],
+    ["protocol 3", (3 << 28) | (1 << 6)],
+    ["reserved bit 31", 0x80000000 | (2 << 28) | (1 << 6)],
+    ["invalid number_pad code", (2 << 28) | (6 << 7) | (1 << 6)],
+    ["ambiguous pickup mode", (2 << 28) | (1 << 6) | (1 << 10)],
+    ["empty pickup selection", 2 << 28],
+  ])("rejects %s", (_name, payload) => {
     expect(() => decodeRuntimeSettings(payload)).toThrow();
   });
 });

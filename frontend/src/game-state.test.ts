@@ -16,6 +16,7 @@ import {
   clearWindow,
   createWindow,
   destroyWindow,
+  endMenu,
   flushDisplay,
   flushStatus,
   getSnapshot,
@@ -26,6 +27,7 @@ import {
   setInputRequest,
   setMapCell,
   setNumberPad,
+  setInventoryWindow,
   setRuntimePhase,
   setStatusValue,
   showMenu,
@@ -253,6 +255,71 @@ describe("game state menus and prompts", () => {
     setInputRequest(null);
     expect(getSnapshot().modal).toBeNull();
     expect(getSnapshot().inputRequest).toBeNull();
+  });
+
+  it("commits immutable permanent inventory snapshots with monotonic revisions", () => {
+    const inventory = createWindow(NHW_MENU);
+    const firstItem = {
+      glyph: null,
+      identifier: 41,
+      accelerator: "a".charCodeAt(0),
+      groupAccelerator: 0,
+      attribute: 1,
+      color: 2,
+      text: "a - a mace",
+      itemFlags: 1,
+    };
+
+    beginMenu(inventory, MENU_BEHAVE_PERMINV);
+    addMenuItem(inventory, firstItem);
+    endMenu(inventory, "Inventory");
+    expect(getSnapshot().permanentInventory).toBeNull();
+
+    setInventoryWindow(inventory);
+    const first = getSnapshot().permanentInventory;
+    expect(first).toEqual({
+      revision: 1,
+      windowId: inventory,
+      prompt: "Inventory",
+      items: [firstItem],
+    });
+
+    beginMenu(inventory, MENU_BEHAVE_PERMINV);
+    addMenuItem(inventory, { ...firstItem, identifier: 99, accelerator: 98, text: "b - a wand" });
+    expect(getSnapshot().permanentInventory).toBe(first);
+    expect(first?.items[0]).toEqual(firstItem);
+
+    endMenu(inventory, "Carrying");
+    setInventoryWindow(inventory);
+    expect(getSnapshot().permanentInventory).toEqual({
+      revision: 2,
+      windowId: inventory,
+      prompt: "Carrying",
+      items: [{ ...firstItem, identifier: 99, accelerator: 98, text: "b - a wand" }],
+    });
+  });
+
+  it("keeps ordinary menus isolated and clears permanent inventory on destroy/reset", () => {
+    const inventory = createWindow(NHW_MENU);
+    beginMenu(inventory, MENU_BEHAVE_PERMINV);
+    endMenu(inventory, "Inventory");
+    setInventoryWindow(inventory);
+    const committed = getSnapshot().permanentInventory;
+
+    const ordinary = createWindow(NHW_MENU);
+    beginMenu(ordinary, MENU_BEHAVE_STANDARD);
+    endMenu(ordinary, "Choose");
+    showMenu(ordinary, 1);
+    expect(getSnapshot().permanentInventory).toBe(committed);
+
+    destroyWindow(inventory);
+    expect(getSnapshot().permanentInventory).toBeNull();
+
+    beginMenu(ordinary, MENU_BEHAVE_PERMINV);
+    endMenu(ordinary, "New session item");
+    setInventoryWindow(ordinary);
+    resetGameState();
+    expect(getSnapshot().permanentInventory).toBeNull();
   });
 });
 

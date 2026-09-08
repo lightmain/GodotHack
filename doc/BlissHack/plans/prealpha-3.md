@@ -653,7 +653,7 @@ blisshack.active-game-and-storage
 
 - 永久背包功能合并后，Settings 增加 `perm_invent` 开关。
 - `perminv_mode` 使用 NetHack 5.0 实际允许值对应的选择菜单。
-- 永久背包侧栏位置、宽度和折叠状态属于界面配置。
+- 永久背包侧栏位置和折叠状态属于界面配置，展开宽度由响应式布局统一控制。
 - `perm_invent` 和 `perminv_mode` 属于 NetHack 配置。
 - 关闭 `perm_invent` 后不显示空侧栏。
 
