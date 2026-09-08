@@ -102,6 +102,13 @@ test("renders and collapses the core permanent inventory without a modal", async
     ".permanent-inventory-item:not(.permanent-inventory-heading)",
   );
   const firstInventoryRow = inventoryRows.first();
+  const [firstRowBox, firstTextBox] = await Promise.all([
+    firstInventoryRow.boundingBox(),
+    firstInventoryRow.locator(".nh-menu-text").boundingBox(),
+  ]);
+  expect(firstRowBox).not.toBeNull();
+  expect(firstTextBox).not.toBeNull();
+  expect(firstTextBox!.width).toBeGreaterThan(firstRowBox!.width / 2);
   await firstInventoryRow.hover();
   await expect(firstInventoryRow).toHaveCSS(
     "background-color",
