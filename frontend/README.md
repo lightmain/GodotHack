@@ -4,10 +4,10 @@ This template provides a minimal setup to get React working in Vite with HMR and
 
 ## Tests
 
-Install the Playwright browser once:
+Install the Playwright browsers once:
 
 ```sh
-npx playwright install chromium
+npx playwright install chromium firefox webkit
 ```
 
 Run unit tests:
@@ -20,6 +20,18 @@ Run the WASM and browser integration suites:
 
 ```sh
 npm run test:integration
+```
+
+Run the manual-release Firefox and WebKit basic flows:
+
+```sh
+npm run test:integration:compat
+```
+
+Run the permanent-inventory performance regression:
+
+```sh
+npm run test:performance
 ```
 
 Run the release-oriented long browser flows:

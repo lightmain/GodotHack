@@ -3,8 +3,11 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type ReactNode,
+  type RefObject,
   type SyntheticEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowLeft,
   Download,
@@ -71,6 +74,12 @@ interface ImportPreview {
 }
 
 type Confirmation = "leave" | "restore" | null;
+type SettingsErrorSource = "form" | "profile-export" | "profile-import";
+
+interface SettingsError {
+  message: string;
+  source: SettingsErrorSource;
+}
 
 const PICKUP_CLASSES: ReadonlyArray<{
   label: string;
@@ -142,10 +151,12 @@ export function SettingsScreen({
   const previousProfile = useRef(validateProfile(profile));
   const [confirmation, setConfirmation] = useState<Confirmation>(null);
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<SettingsError | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [profilePending, setProfilePending] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const importButtonRef = useRef<HTMLButtonElement>(null);
+  const confirmationTriggerRef = useRef<HTMLElement>(null);
   const dirty = JSON.stringify(draft) !== JSON.stringify(profile);
   const storageAvailable = loadStatus !== "unavailable";
   const isGameSettings = context === "game";
@@ -203,6 +214,7 @@ export function SettingsScreen({
   async function commit(
     candidate: BlissHackProfileV1,
     message: string,
+    errorSource: SettingsErrorSource,
   ): Promise<boolean> {
     setError(null);
     setSuccess(null);
@@ -218,9 +230,12 @@ export function SettingsScreen({
       if (error instanceof ProfileStaleError && error.latestProfile) {
         draftBaseProfile.current = error.latestProfile;
       }
-      setError(error instanceof ProfileStaleError
-        ? "Settings changed in another page. Review your changes and try again."
-        : "Settings could not be saved. Your previous settings are unchanged.");
+      setError({
+        message: error instanceof ProfileStaleError
+          ? "Settings changed in another page. Review your changes and try again."
+          : "Settings could not be saved. Your previous settings are unchanged.",
+        source: errorSource,
+      });
       return false;
     } finally {
       setProfilePending(false);
@@ -233,7 +248,7 @@ export function SettingsScreen({
   ): Promise<void> {
     event.preventDefault();
     if (!dirty || !storageAvailable || profilePending) return;
-    if (await commit(draft, "Settings saved")) onBack();
+    if (await commit(draft, "Settings saved", "form")) onBack();
   }
 
   /** Leave immediately when clean, otherwise require explicit discard. */
@@ -254,7 +269,10 @@ export function SettingsScreen({
     setError(null);
     setSuccess(null);
     if (!file.name.toLowerCase().endsWith(".bhprofile")) {
-      setError("Choose a .bhprofile file.");
+      setError({
+        message: "Choose a .bhprofile file.",
+        source: "profile-import",
+      });
       return;
     }
 
@@ -273,14 +291,21 @@ export function SettingsScreen({
         profile: incoming,
       });
     } catch {
-      setError("The selected profile is damaged, unsupported, or invalid.");
+      setError({
+        message: "The selected profile is damaged, unsupported, or invalid.",
+        source: "profile-import",
+      });
     }
   }
 
   /** Import the retained candidate as one complete profile replacement. */
   async function confirmImport(): Promise<void> {
     if (!importPreview || !storageAvailable || profilePending) return;
-    if (await commit(importPreview.profile, "Profile imported")) {
+    if (await commit(
+      importPreview.profile,
+      "Profile imported",
+      "profile-import",
+    )) {
       setImportPreview(null);
     }
   }
@@ -288,7 +313,7 @@ export function SettingsScreen({
   /** Restore and persist reviewed defaults after confirmation. */
   async function confirmRestore(): Promise<void> {
     if (!storageAvailable || profilePending) return;
-    if (await commit(createDefaultProfile(), "Defaults restored")) {
+    if (await commit(createDefaultProfile(), "Defaults restored", "form")) {
       setConfirmation(null);
     }
   }
@@ -302,7 +327,10 @@ export function SettingsScreen({
       downloadProfile(await onExportProfile(), PRODUCT_VERSION);
     } catch (error) {
       if (!(error instanceof GameLockCancelledError)) {
-        setError("The profile could not be exported.");
+        setError({
+          message: "The profile could not be exported.",
+          source: "profile-export",
+        });
       }
     } finally {
       setProfilePending(false);
@@ -319,7 +347,10 @@ export function SettingsScreen({
         <button
           aria-label={isGameSettings ? "Back to Pause" : "Back to Home"}
           className="settings-back"
-          onClick={requestBack}
+          onClick={(event) => {
+            confirmationTriggerRef.current = event.currentTarget;
+            requestBack();
+          }}
           title={isGameSettings ? "Back to Pause" : "Back to Home"}
           type="button"
         >
@@ -332,13 +363,21 @@ export function SettingsScreen({
         <span className="settings-version">{PRODUCT_VERSION}</span>
       </header>
 
-      <form className="settings-form" onSubmit={applyDraft}>
+      <form
+        aria-describedby={error?.source === "form" ? "settings-error" : undefined}
+        className="settings-form"
+        onSubmit={applyDraft}
+      >
         {profileStatusMessage(loadStatus) && (
           <p className="settings-warning" role="alert">
             {profileStatusMessage(loadStatus)}
           </p>
         )}
-        {error && <p className="settings-error" role="alert">{error}</p>}
+        {error && (
+          <p className="settings-error" id="settings-error" role="alert">
+            {error.message}
+          </p>
+        )}
         {success && <p className="settings-success" role="status">{success}</p>}
 
         <section className="settings-section" aria-labelledby="interface-title">
@@ -557,6 +596,11 @@ export function SettingsScreen({
             </header>
             <div className="settings-profile-actions">
               <button
+                aria-describedby={
+                  error?.source === "profile-export"
+                    ? "settings-error"
+                    : undefined
+                }
                 disabled={profilePending}
                 onClick={() => void exportProfile()}
                 type="button"
@@ -565,8 +609,14 @@ export function SettingsScreen({
                 Export Profile
               </button>
               <button
+                aria-describedby={
+                  error?.source === "profile-import"
+                    ? "settings-error"
+                    : undefined
+                }
                 disabled={!storageAvailable || profilePending}
                 onClick={() => fileInputRef.current?.click()}
+                ref={importButtonRef}
                 type="button"
               >
                 <Upload aria-hidden="true" size={17} />
@@ -574,6 +624,12 @@ export function SettingsScreen({
               </button>
               <input
                 accept=".bhprofile,application/json"
+                aria-describedby={
+                  error?.source === "profile-import"
+                    ? "settings-error"
+                    : undefined
+                }
+                aria-invalid={error?.source === "profile-import" || undefined}
                 aria-label="Import profile file"
                 className="settings-file-input"
                 disabled={!storageAvailable}
@@ -583,7 +639,10 @@ export function SettingsScreen({
               />
               <button
                 disabled={!storageAvailable || profilePending}
-                onClick={() => setConfirmation("restore")}
+                onClick={(event) => {
+                  confirmationTriggerRef.current = event.currentTarget;
+                  setConfirmation("restore");
+                }}
                 type="button"
               >
                 <RotateCcw aria-hidden="true" size={17} />
@@ -629,7 +688,15 @@ export function SettingsScreen({
 
         <footer className="settings-actions">
           <span>{dirty ? "Unsaved changes" : "No unsaved changes"}</span>
-          <button onClick={requestBack} type="button">Cancel</button>
+          <button
+            onClick={(event) => {
+              confirmationTriggerRef.current = event.currentTarget;
+              requestBack();
+            }}
+            type="button"
+          >
+            Cancel
+          </button>
           <button
             className="settings-apply"
             disabled={!dirty || !storageAvailable || profilePending}
@@ -648,6 +715,7 @@ export function SettingsScreen({
           }?`}
           onCancel={() => setConfirmation(null)}
           onConfirm={onBack}
+          returnFocusRef={confirmationTriggerRef}
           title="Unsaved settings"
         />
       )}
@@ -657,6 +725,7 @@ export function SettingsScreen({
           message="Replace all Interface and NetHack settings with defaults?"
           onCancel={() => setConfirmation(null)}
           onConfirm={confirmRestore}
+          returnFocusRef={confirmationTriggerRef}
           title="Restore defaults"
         />
       )}
@@ -665,6 +734,7 @@ export function SettingsScreen({
           preview={importPreview}
           onCancel={() => setImportPreview(null)}
           onConfirm={confirmImport}
+          returnFocusRef={importButtonRef}
         />
       )}
     </main>
@@ -731,32 +801,39 @@ function ConfirmationDialog({
   message,
   onCancel,
   onConfirm,
+  returnFocusRef,
   title,
 }: {
   confirmLabel: string;
   message: string;
   onCancel(): void;
   onConfirm(): void;
+  returnFocusRef: RefObject<HTMLElement | null>;
   title: string;
 }) {
   return (
-    <div className="settings-modal-backdrop">
-      <section
-        aria-label={title}
-        aria-modal="true"
-        className="settings-modal"
-        role="alertdialog"
-      >
-        <h2>{title}</h2>
-        <p>{message}</p>
-        <div className="settings-modal-actions">
-          <button autoFocus onClick={onCancel} type="button">Cancel</button>
-          <button className="settings-danger" onClick={onConfirm} type="button">
-            {confirmLabel}
-          </button>
-        </div>
-      </section>
-    </div>
+    <SettingsModal
+      alert
+      label={title}
+      onCancel={onCancel}
+      returnFocusRef={returnFocusRef}
+    >
+      <h2>{title}</h2>
+      <p>{message}</p>
+      <div className="settings-modal-actions">
+        <button
+          autoFocus
+          data-modal-initial-focus
+          onClick={onCancel}
+          type="button"
+        >
+          Cancel
+        </button>
+        <button className="settings-danger" onClick={onConfirm} type="button">
+          {confirmLabel}
+        </button>
+      </div>
+    </SettingsModal>
   );
 }
 
@@ -764,54 +841,162 @@ function ImportPreviewDialog({
   onCancel,
   onConfirm,
   preview,
+  returnFocusRef,
 }: {
   onCancel(): void;
   onConfirm(): void;
   preview: ImportPreview;
+  returnFocusRef: RefObject<HTMLElement | null>;
 }) {
   return (
+    <SettingsModal
+      className="settings-import-preview"
+      label="Import profile"
+      onCancel={onCancel}
+      returnFocusRef={returnFocusRef}
+    >
+      <h2>Import profile</h2>
+      <dl className="settings-import-meta">
+        <div><dt>Version</dt><dd>{preview.document.productVersion}</dd></div>
+        <div><dt>Exported</dt><dd>{formatExportTime(preview.document.exportedAt)}</dd></div>
+      </dl>
+      {preview.differences.length === 0
+        ? <p>No settings differ.</p>
+        : (
+          <div className="settings-differences">
+            <div className="settings-difference-heading">
+              <span>Setting</span><span>Current</span><span>Incoming</span>
+            </div>
+            {preview.differences.map((difference) => (
+              <div key={difference.path}>
+                <strong>{difference.label}</strong>
+                <span>{difference.current}</span>
+                <span>{difference.incoming}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      <div className="settings-modal-actions">
+        <button
+          autoFocus
+          data-modal-initial-focus
+          onClick={onCancel}
+          type="button"
+        >
+          Cancel
+        </button>
+        <button
+          className="settings-primary"
+          disabled={preview.differences.length === 0}
+          onClick={onConfirm}
+          type="button"
+        >
+          Import
+        </button>
+      </div>
+    </SettingsModal>
+  );
+}
+
+/**
+ * Render a portal-backed Settings modal with focus containment and restoration.
+ * @param props - modal semantics, content, and optional Escape cancellation.
+ * @returns an accessible modal isolated from the Settings screen.
+ */
+function SettingsModal({
+  alert = false,
+  children,
+  className = "",
+  label,
+  onCancel,
+  returnFocusRef,
+}: {
+  alert?: boolean;
+  children: ReactNode;
+  className?: string;
+  label: string;
+  onCancel?: () => void;
+  returnFocusRef?: RefObject<HTMLElement | null>;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  const onCancelRef = useRef(onCancel);
+
+  useEffect(() => {
+    onCancelRef.current = onCancel;
+  }, [onCancel]);
+
+  useEffect(() => {
+    const modal = ref.current;
+    if (!modal) return undefined;
+    const trigger = returnFocusRef?.current
+      ?? (document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null);
+    const settingsScreen = document.querySelector<HTMLElement>(
+      ".settings-screen",
+    );
+    if (settingsScreen) settingsScreen.inert = true;
+    const initial = modal.querySelector<HTMLElement>(
+      "[data-modal-initial-focus]",
+    ) ?? modal.querySelector<HTMLElement>("button, input, select, textarea");
+    initial?.focus();
+
+    /** Keep keyboard focus and Escape handling inside the active modal. */
+    function containFocus(event: KeyboardEvent): void {
+      if (event.key === "Escape" && onCancelRef.current) {
+        event.preventDefault();
+        event.stopPropagation();
+        onCancelRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(modal!.querySelectorAll<HTMLElement>(
+        "button:not([disabled]), input:not([disabled]), select:not([disabled]), "
+          + "textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
+      ));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable.at(-1) as HTMLElement;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    modal.addEventListener("keydown", containFocus);
+    return () => {
+      modal.removeEventListener("keydown", containFocus);
+      if (settingsScreen) settingsScreen.inert = false;
+      globalThis.setTimeout(() => {
+        if (
+          trigger?.isConnected
+          && !document.querySelector("[aria-modal='true']")
+        ) {
+          trigger.focus();
+        }
+      }, 0);
+    };
+  }, [returnFocusRef]);
+
+  const modal = (
     <div className="settings-modal-backdrop">
       <section
-        aria-label="Import profile"
+        aria-label={label}
         aria-modal="true"
-        className="settings-modal settings-import-preview"
-        role="dialog"
+        className={`settings-modal${className ? ` ${className}` : ""}`}
+        ref={ref}
+        role={alert ? "alertdialog" : "dialog"}
       >
-        <h2>Import profile</h2>
-        <dl className="settings-import-meta">
-          <div><dt>Version</dt><dd>{preview.document.productVersion}</dd></div>
-          <div><dt>Exported</dt><dd>{formatExportTime(preview.document.exportedAt)}</dd></div>
-        </dl>
-        {preview.differences.length === 0
-          ? <p>No settings differ.</p>
-          : (
-            <div className="settings-differences">
-              <div className="settings-difference-heading">
-                <span>Setting</span><span>Current</span><span>Incoming</span>
-              </div>
-              {preview.differences.map((difference) => (
-                <div key={difference.path}>
-                  <strong>{difference.label}</strong>
-                  <span>{difference.current}</span>
-                  <span>{difference.incoming}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        <div className="settings-modal-actions">
-          <button autoFocus onClick={onCancel} type="button">Cancel</button>
-          <button
-            className="settings-primary"
-            disabled={preview.differences.length === 0}
-            onClick={onConfirm}
-            type="button"
-          >
-            Import
-          </button>
-        </div>
+        {children}
       </section>
     </div>
   );
+  return typeof document === "undefined"
+    ? modal
+    : createPortal(modal, document.body);
 }
 
 function updateInterface(

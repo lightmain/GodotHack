@@ -44,6 +44,7 @@ export function PermanentInventoryPanel({
             event.currentTarget.blur();
             onCollapsedChange(!collapsed);
           }}
+          tabIndex={0}
           title={toggleLabel}
           type="button"
         >

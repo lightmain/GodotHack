@@ -60,6 +60,13 @@ interface CompletedImport {
   profileApplied: boolean | null;
 }
 
+type DataErrorSource = "backup-export" | "backup-import" | "clear";
+
+interface DataError {
+  message: string;
+  source: DataErrorSource;
+}
+
 const CLEAR_CONFIRMATION = "CLEAR BLISSHACK DATA";
 const IGNORE_PERSISTENCE_RESULT = () => undefined;
 
@@ -88,7 +95,7 @@ export function DataManagementSection({
   const [persistence, setPersistence] =
     useState<PersistenceStatus>("checking");
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DataError | null>(null);
   const [preview, setPreview] = useState<BackupImportPreview | null>(null);
   const [overwrites, setOverwrites] = useState<Set<string>>(new Set());
   const [completed, setCompleted] = useState<CompletedImport | null>(null);
@@ -141,7 +148,10 @@ export function DataManagementSection({
       downloadText(await onExportFullBackup());
     } catch (operationError) {
       if (!(operationError instanceof GameLockCancelledError)) {
-        setError("The full backup could not be created.");
+        setError({
+          message: "The full backup could not be created.",
+          source: "backup-export",
+        });
       }
     } finally {
       setPending(false);
@@ -158,7 +168,10 @@ export function DataManagementSection({
     if (!file || blocked) return;
     setError(null);
     if (file.size > BACKUP_IMPORT_MAX_BYTES) {
-      setError("The selected backup exceeds the 96 MiB limit.");
+      setError({
+        message: "The selected backup exceeds the 96 MiB limit.",
+        source: "backup-import",
+      });
       restoreFocus(importButtonRef);
       return;
     }
@@ -171,7 +184,10 @@ export function DataManagementSection({
       setPreview(nextPreview);
     } catch (operationError) {
       if (!(operationError instanceof GameLockCancelledError)) {
-        setError("The selected backup is damaged, unsupported, or invalid.");
+        setError({
+          message: "The selected backup is damaged, unsupported, or invalid.",
+          source: "backup-import",
+        });
         restoreFocus(importButtonRef);
       }
     } finally {
@@ -192,9 +208,15 @@ export function DataManagementSection({
       if (operationError instanceof BackupPreviewStaleError) {
         setPreview(operationError.preview);
         setOverwrites(new Set());
-        setError("Local saves changed. Review the updated backup preview.");
+        setError({
+          message: "Local saves changed. Review the updated backup preview.",
+          source: "backup-import",
+        });
       } else if (!(operationError instanceof GameLockCancelledError)) {
-        setError("Backup import stopped because local save data could not be restored.");
+        setError({
+          message: "Backup import stopped because local save data could not be restored.",
+          source: "backup-import",
+        });
         setPreview(null);
         restoreFocus(importButtonRef);
       }
@@ -225,7 +247,10 @@ export function DataManagementSection({
       await onClearLocalData();
     } catch (operationError) {
       if (!(operationError instanceof GameLockCancelledError)) {
-        setError("Local data could not be cleared. Existing data was preserved when possible.");
+        setError({
+          message: "Local data could not be cleared. Existing data was preserved when possible.",
+          source: "clear",
+        });
         setClearOpen(false);
         setClearText("");
         restoreFocus(clearButtonRef);
@@ -247,7 +272,15 @@ export function DataManagementSection({
               Apply or cancel unsaved settings before managing local data.
             </p>
           )}
-          {error && <p className="settings-error" role="alert">{error}</p>}
+          {error
+            && !(preview && error.source === "backup-import")
+            && !(clearOpen
+              && (error.source === "clear" || error.source === "backup-export"))
+            && (
+            <p className="settings-error" id="data-operation-error" role="alert">
+              {error.message}
+            </p>
+            )}
           <div className="settings-data-status">
             <Database aria-hidden="true" size={18} />
             <span>{persistenceLabel(persistence)}</span>
@@ -269,6 +302,11 @@ export function DataManagementSection({
           </p>
           <div className="settings-profile-actions">
             <button
+              aria-describedby={
+                error?.source === "backup-export"
+                  ? "data-operation-error"
+                  : undefined
+              }
               disabled={blocked}
               onClick={() => void exportBackup()}
               ref={exportRef}
@@ -278,6 +316,11 @@ export function DataManagementSection({
               Export Full Backup
             </button>
             <button
+              aria-describedby={
+                error?.source === "backup-import"
+                  ? "data-operation-error"
+                  : undefined
+              }
               disabled={blocked}
               onClick={() => importRef.current?.click()}
               ref={importButtonRef}
@@ -288,6 +331,12 @@ export function DataManagementSection({
             </button>
             <input
               accept=".bhbackup,application/json"
+              aria-describedby={
+                error?.source === "backup-import"
+                  ? "data-operation-error"
+                  : undefined
+              }
+              aria-invalid={error?.source === "backup-import" || undefined}
               aria-label="Import full backup file"
               className="settings-file-input"
               disabled={blocked}
@@ -296,6 +345,11 @@ export function DataManagementSection({
               type="file"
             />
             <button
+              aria-describedby={
+                error?.source === "clear"
+                  ? "data-operation-error"
+                  : undefined
+              }
               className="settings-danger"
               disabled={blocked}
               onClick={() => {
@@ -322,6 +376,11 @@ export function DataManagementSection({
           }}
         >
           <h2>Import full backup</h2>
+          {error?.source === "backup-import" && (
+            <p className="settings-error" id="data-operation-error" role="alert">
+              {error.message}
+            </p>
+          )}
           <dl className="settings-import-meta">
             <div><dt>Version</dt><dd>{preview.source.productVersion}</dd></div>
             <div><dt>Build</dt><dd>{preview.source.buildId}</dd></div>
@@ -385,6 +444,11 @@ export function DataManagementSection({
               Cancel
             </button>
             <button
+              aria-describedby={
+                error?.source === "backup-import"
+                  ? "data-operation-error"
+                  : undefined
+              }
               className="settings-primary"
               disabled={pending}
               onClick={() => void importBackup()}
@@ -486,13 +550,22 @@ export function DataManagementSection({
           }}
         >
           <h2>Clear local data</h2>
-          {error && <p className="settings-error" role="alert">{error}</p>}
+          {(error?.source === "clear" || error?.source === "backup-export") && (
+            <p className="settings-error" id="data-operation-error" role="alert">
+              {error.message}
+            </p>
+          )}
           <p>
             This deletes {saveCount} saved games, {profilePresent
               ? "the saved profile"
               : "no saved profile"}, and {clearDiagnosticCount} diagnostic events.
           </p>
           <button
+            aria-describedby={
+              error?.source === "backup-export"
+                ? "data-operation-error"
+                : undefined
+            }
             disabled={pending}
             onClick={() => void exportBackup()}
             type="button"
@@ -503,6 +576,11 @@ export function DataManagementSection({
           <label className="settings-clear-confirmation">
             <span>Type {CLEAR_CONFIRMATION} to continue</span>
             <input
+              aria-describedby={
+                error?.source === "clear"
+                  ? "data-operation-error"
+                  : undefined
+              }
               autoFocus
               data-modal-initial-focus
               disabled={pending}
@@ -523,6 +601,11 @@ export function DataManagementSection({
               Cancel
             </button>
             <button
+              aria-describedby={
+                error?.source === "clear"
+                  ? "data-operation-error"
+                  : undefined
+              }
               className="settings-danger"
               disabled={pending || clearText !== CLEAR_CONFIRMATION}
               onClick={() => void clearLocalData()}

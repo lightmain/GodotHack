@@ -13,6 +13,8 @@
     "test:integration": "npm run test:integration:wasm && npm run test:integration:browser",
     "test:integration:wasm": "node test/integration-tests/wasm-test.mjs",
     "test:integration:browser": "playwright test",
+    "test:integration:compat": "playwright test --config=playwright.compat.config.ts",
+    "test:performance": "playwright test --config=playwright.performance.config.ts",
     "test:long": "playwright test --config=playwright.long.config.ts",
     "lint": "oxlint --ignore-pattern public/nethack.js",
     "preview": "vite preview"

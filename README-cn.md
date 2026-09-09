@@ -91,17 +91,22 @@ cd frontend
 npm test
 npm run lint
 npm run test:integration
+npm run test:integration:compat
+npm run test:performance
 npm run test:long
 ```
 
 集成测试会运行真实 WASM 回调链和生产浏览器构建，覆盖启动、键盘输入、状态栏、
-存档和恢复流程。长流程测试用于发布前重复验证游戏会话、继续保存和存档传输。
+存档和恢复流程。跨浏览器基础组覆盖 Firefox 和 WebKit 的发布关键路径，性能
+测试记录永久背包在不同条目数量下的更新和滚动表现。长流程测试用于发布前重复
+验证游戏会话、继续保存和存档传输。
 
 ## 仓库文档
 
 - [prealpha-1 计划](doc/BlissHack/plans/prealpha-1.md)
 - [prealpha-2 计划](doc/BlissHack/plans/prealpha-2.md)
 - [prealpha-3 计划](doc/BlissHack/plans/prealpha-3.md)
+- [prealpha-3 发布验收](doc/BlissHack/plans/in-prealpha-3/release-acceptance.md)
 - [上游修改清单](doc/BlissHack/upstream-modifications.md)
 - [存档存储与读取方案评审](doc/BlissHack/plans/in-prealpha-2/save-format-review.md)
 - [Game Module 生命周期](doc/BlissHack/plans/in-prealpha-2/module-lifecycle.md)

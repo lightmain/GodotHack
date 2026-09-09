@@ -185,13 +185,21 @@ test("restores data-action focus after recoverable failures", async ({
     mimeType: "application/json",
     buffer: Buffer.from("{bad"),
   });
-  await expect(page.getByText(
+  const importError = page.getByText(
     "The selected backup is damaged, unsupported, or invalid.",
-  )).toBeVisible();
-  await expect(page.getByRole("button", {
+  );
+  await expect(importError).toHaveAttribute("id", "data-operation-error");
+  const importButton = page.getByRole("button", {
     name: "Import Full Backup",
     exact: true,
-  })).toBeFocused();
+  });
+  await expect(importButton).toHaveAttribute(
+    "aria-describedby",
+    "data-operation-error",
+  );
+  await expect(page.getByLabel("Import full backup file"))
+    .toHaveAttribute("aria-invalid", "true");
+  await expect(importButton).toBeFocused();
 
   await page.evaluate(() => {
     const original = Storage.prototype.removeItem;
@@ -205,9 +213,14 @@ test("restores data-action focus after recoverable failures", async ({
   await clear.getByRole("textbox").fill("CLEAR BLISSHACK DATA");
   await clear.getByRole("button", { name: "Clear", exact: true }).click();
 
-  await expect(page.getByText(
+  const clearError = page.getByText(
     "Local data could not be cleared. Existing data was preserved when possible.",
-  )).toBeVisible();
-  await expect(page.getByRole("button", { name: "Clear Local Data" }))
-    .toBeFocused();
+  );
+  await expect(clearError).toHaveAttribute("id", "data-operation-error");
+  const clearButton = page.getByRole("button", { name: "Clear Local Data" });
+  await expect(clearButton).toHaveAttribute(
+    "aria-describedby",
+    "data-operation-error",
+  );
+  await expect(clearButton).toBeFocused();
 });

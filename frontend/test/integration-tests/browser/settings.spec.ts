@@ -64,8 +64,18 @@ test("edits, persists, and cancels Home Settings without replacing the module", 
   await page.getByRole("button", { name: "Back to Home" }).click();
   const discard = page.getByRole("alertdialog", { name: "Unsaved settings" });
   await expect(discard).toBeVisible();
+  await expect(screen).toHaveAttribute("inert", "");
+  const discardCancel = discard.getByRole("button", { name: "Cancel" });
+  const discardConfirm = discard.getByRole("button", { name: "Discard" });
+  await expect(discardCancel).toBeFocused();
+  await discardConfirm.focus();
+  await page.keyboard.press("Tab");
+  await expect(discardCancel).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(discardConfirm).toBeFocused();
   await discard.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Back to Home" })).toBeFocused();
   await page.getByRole("button", { name: "Back to Home" }).click();
   await page.getByRole("alertdialog", { name: "Unsaved settings" })
     .getByRole("button", { name: "Discard" }).click();
@@ -107,9 +117,29 @@ test("exports, previews, imports, and restores a complete profile", async ({
 
   const preview = page.getByRole("dialog", { name: "Import profile" });
   await expect(preview).toBeVisible();
+  await expect(page.locator(".settings-screen")).toHaveAttribute("inert", "");
   await expect(preview.getByText("Terminal font size")).toBeVisible();
   await expect(preview.getByText("Automatic pickup")).toBeVisible();
   await expect(preview.getByText("Pickup categories")).toBeVisible();
+  const previewCancel = preview.getByRole("button", { name: "Cancel" });
+  const previewImport = preview.getByRole("button", { name: "Import" });
+  await expect(previewCancel).toBeFocused();
+  await previewImport.focus();
+  await page.keyboard.press("Tab");
+  await expect(previewCancel).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(preview).toHaveCount(0);
+  await expect(page.getByRole("button", {
+    name: "Import Profile",
+    exact: true,
+  })).toBeFocused();
+
+  await page.getByLabel("Import profile file").setInputFiles({
+    name: "custom.bhprofile",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(exported)),
+  });
+  await expect(preview).toBeVisible();
   await preview.getByRole("button", { name: "Import" }).click();
   await expect(page.getByText("Profile imported", { exact: true })).toBeVisible();
   await expect(page.getByRole("radio", { name: "Large" })).toBeChecked();
@@ -140,5 +170,26 @@ test("exports, previews, imports, and restores a complete profile", async ({
       pickupTypes: { mode: "all" },
     },
   });
+
+  const profileInput = page.getByLabel("Import profile file");
+  await profileInput.setInputFiles({
+    name: "invalid.bhprofile",
+    mimeType: "application/json",
+    buffer: Buffer.from("{bad"),
+  });
+  const importError = page.getByText(
+    "The selected profile is damaged, unsupported, or invalid.",
+  );
+  await expect(importError).toHaveAttribute("id", "settings-error");
+  await expect(profileInput).toHaveAttribute(
+    "aria-describedby",
+    "settings-error",
+  );
+  await expect(profileInput).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByRole("button", {
+    name: "Import Profile",
+    exact: true,
+  }))
+    .toHaveAttribute("aria-describedby", "settings-error");
   expect(errors).toEqual({ console: [], page: [] });
 });
