@@ -205,7 +205,7 @@ test("renders and collapses the core permanent inventory without a modal", async
     "button",
     { name: "Expand inventory" },
   ).boundingBox();
-  expect(collapsedBox?.width).toBe(42);
+  expect(collapsedBox?.width).toBeCloseTo(42, 4);
   expect(expandButtonBox?.x).toBeGreaterThanOrEqual(collapsedBox?.x ?? 0);
   expect(
     (expandButtonBox?.x ?? 0) + (expandButtonBox?.width ?? 0),

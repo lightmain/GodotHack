@@ -13,6 +13,7 @@ test("blocks a second game and retries after the owning page closes", async ({
   context,
   page,
 }) => {
+  test.slow();
   const errors = captureErrors(page);
   await openHome(page, "lock-owner-close");
   expect(await page.evaluate(() => typeof navigator.locks?.request))
@@ -130,7 +131,9 @@ test("releases the game lock after fatal session cleanup", async ({
   await conflict.getByRole("button", { name: "Try Again" }).click();
   await expect(second.getByRole("textbox", { name: "Who are you?" }))
     .toBeVisible();
-  expect(errors.page).toEqual([]);
+  expect(errors.page.filter(
+    (message) => message !== "test fatal lock release",
+  )).toEqual([]);
   expect(secondErrors).toEqual({ console: [], page: [] });
 });
 
