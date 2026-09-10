@@ -199,6 +199,16 @@ test("renders and collapses the core permanent inventory without a modal", async
   await expect(page.locator(".nh-prompt")).toContainText(
     /What do you want to drop/,
   );
+  const [promptBox, statusBox] = await Promise.all([
+    page.locator(".nh-prompt").boundingBox(),
+    page.locator(".nh-status").boundingBox(),
+  ]);
+  expect(promptBox).not.toBeNull();
+  expect(statusBox).not.toBeNull();
+  expect(Math.abs(promptBox!.x - statusBox!.x)).toBeLessThan(1);
+  expect(
+    Math.abs(promptBox!.y - statusBox!.y - statusBox!.height),
+  ).toBeLessThan(1);
   await page.keyboard.press("Shift+Slash");
   const dropMenu = page.locator(".nh-dialog.nh-menu");
   await expect(dropMenu).toBeVisible();

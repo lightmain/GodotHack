@@ -283,6 +283,7 @@ export function GameScreen({
                 map={snapshot.map}
               />
               <StatusArea status={snapshot.status} />
+              <InputArea request={snapshot.inputRequest} />
             </div>
             {gameProfile.nethack.permInvent
               && snapshot.permanentInventory && (
@@ -294,7 +295,6 @@ export function GameScreen({
               />
             )}
           </div>
-          <InputArea request={snapshot.inputRequest} />
         </section>
       )}
 
