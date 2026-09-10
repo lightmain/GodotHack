@@ -1,3 +1,7 @@
+import {
+  useRef,
+  type FocusEvent,
+} from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { PermanentInventoryState } from "../game-state";
 import type { PermanentInventoryPosition } from "../settings/profile";
@@ -19,10 +23,34 @@ export function PermanentInventoryPanel({
   onCollapsedChange,
   position,
 }: PermanentInventoryPanelProps) {
+  const mouseFocusRef = useRef(false);
   const itemCount = inventory.items.filter(
     (item) => item.identifier !== null,
   ).length;
   const toggleLabel = collapsed ? "Expand inventory" : "Collapse inventory";
+
+  /**
+   * Mark focus caused by a mouse press so it is not mistaken for keyboard use.
+   */
+  function handleMouseDown(): void {
+    mouseFocusRef.current = true;
+    globalThis.setTimeout(() => {
+      mouseFocusRef.current = false;
+    }, 0);
+  }
+
+  /**
+   * Keep keyboard focus for scrolling, but release incidental mouse focus.
+   * @param event - focus event delegated from the inventory panel.
+   */
+  function handleFocus(event: FocusEvent<HTMLElement>): void {
+    if (
+      mouseFocusRef.current
+      && event.target === event.currentTarget
+    ) {
+      event.currentTarget.blur();
+    }
+  }
 
   return (
     <aside
@@ -30,6 +58,8 @@ export function PermanentInventoryPanel({
       className={`permanent-inventory permanent-inventory-${position}${collapsed ? " permanent-inventory-collapsed" : ""}`}
       data-browser-keyboard
       data-position={position}
+      onFocus={handleFocus}
+      onMouseDown={handleMouseDown}
       role="region"
       tabIndex={collapsed ? -1 : 0}
     >

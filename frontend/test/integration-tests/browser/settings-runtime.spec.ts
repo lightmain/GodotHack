@@ -139,6 +139,27 @@ test("renders and collapses the core permanent inventory without a modal", async
   expect(await inventory.evaluate(
     (panel) => !panel.contains(document.activeElement),
   )).toBe(true);
+  await inventory.locator(".permanent-inventory-header strong").click();
+  expect(await inventory.evaluate(
+    (panel) => !panel.contains(document.activeElement),
+  )).toBe(true);
+  await page.keyboard.press("i");
+  const keyboardInventory = page.locator(".nh-dialog.nh-menu");
+  await expect(keyboardInventory).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(keyboardInventory).toHaveCount(0);
+
+  await inventory.focus();
+  await expect(inventory).toBeFocused();
+  await page.locator(".nh-map").click({ position: { x: 2, y: 2 } });
+  expect(await inventory.evaluate(
+    (panel) => !panel.contains(document.activeElement),
+  )).toBe(true);
+  await page.keyboard.press("i");
+  await expect(keyboardInventory).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(keyboardInventory).toHaveCount(0);
+
   const allCount = await inventoryRows.count();
   await page.keyboard.press("Tab");
   await page.keyboard.press("Tab");

@@ -221,6 +221,26 @@ export function GameScreen({
     });
   }
 
+  /**
+   * Return keyboard ownership to the game when its non-browser UI is clicked.
+   * @param event - mouse event captured by the active game shell.
+   */
+  function handleGameMouseDown(event: ReactMouseEvent<HTMLElement>): void {
+    if (
+      event.target instanceof Element
+      && event.target.closest("[data-browser-keyboard]")
+    ) {
+      return;
+    }
+    const active = document.activeElement;
+    if (
+      active instanceof HTMLElement
+      && active.closest("[data-browser-keyboard]")
+    ) {
+      active.blur();
+    }
+  }
+
   return (
     <main
       className={`nh-shell nh-font-${settings.terminalFontSize}`}
@@ -228,6 +248,7 @@ export function GameScreen({
       data-number-pad={snapshot.numberPad ? "on" : "off"}
       data-settings-status={snapshot.runtimeSettingsStatus}
       aria-label="BlissHack"
+      onMouseDownCapture={handleGameMouseDown}
     >
       <header className="nh-header">
         <strong>BlissHack</strong>
