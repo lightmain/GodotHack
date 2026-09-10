@@ -981,7 +981,7 @@ describe("menus", () => {
     expect(isWaitingForInput()).toBe(false);
   });
 
-  it("isolates ordinary menus and clears permanent inventory on destroy and reset", async () => {
+  it("retains permanent inventory on destroy and clears it on reset", async () => {
     const inventory = await shimCallback("shim_create_nhwindow", NHW_MENU) as number;
     await shimCallback("shim_start_menu", inventory, MENU_BEHAVE_PERMINV);
     await shimCallback("shim_end_menu", inventory, "Inventory");
@@ -1003,7 +1003,8 @@ describe("menus", () => {
     await pending;
 
     await shimCallback("shim_destroy_nhwindow", inventory);
-    expect(getSnapshot().permanentInventory).toBeNull();
+    expect(getSnapshot().inventoryWindowId).toBeNull();
+    expect(getSnapshot().permanentInventory).toBe(committed);
 
     resetBridgeState();
     expect(getSnapshot().permanentInventory).toBeNull();

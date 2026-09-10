@@ -30,13 +30,17 @@ export function PermanentInventoryPanel({
   const toggleLabel = collapsed ? "Expand inventory" : "Collapse inventory";
 
   /**
-   * Mark focus caused by a mouse press so it is not mistaken for keyboard use.
+   * Mark the start of a mouse gesture which may focus the panel container.
    */
   function handleMouseDown(): void {
     mouseFocusRef.current = true;
-    globalThis.setTimeout(() => {
-      mouseFocusRef.current = false;
-    }, 0);
+  }
+
+  /**
+   * Clear mouse focus intent after the gesture completes or leaves the panel.
+   */
+  function handleMouseEnd(): void {
+    mouseFocusRef.current = false;
   }
 
   /**
@@ -45,8 +49,8 @@ export function PermanentInventoryPanel({
    */
   function handleFocus(event: FocusEvent<HTMLElement>): void {
     if (
-      mouseFocusRef.current
-      && event.target === event.currentTarget
+      event.target === event.currentTarget
+      && mouseFocusRef.current
     ) {
       event.currentTarget.blur();
     }
@@ -60,6 +64,8 @@ export function PermanentInventoryPanel({
       data-position={position}
       onFocus={handleFocus}
       onMouseDown={handleMouseDown}
+      onMouseLeave={handleMouseEnd}
+      onMouseUp={handleMouseEnd}
       role="region"
       tabIndex={collapsed ? -1 : 0}
     >

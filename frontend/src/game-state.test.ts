@@ -299,7 +299,7 @@ describe("game state menus and prompts", () => {
     });
   });
 
-  it("keeps ordinary menus isolated and clears permanent inventory on destroy/reset", () => {
+  it("keeps the last permanent inventory after destroy and clears it on reset", () => {
     const inventory = createWindow(NHW_MENU);
     beginMenu(inventory, MENU_BEHAVE_PERMINV);
     endMenu(inventory, "Inventory");
@@ -313,7 +313,8 @@ describe("game state menus and prompts", () => {
     expect(getSnapshot().permanentInventory).toBe(committed);
 
     destroyWindow(inventory);
-    expect(getSnapshot().permanentInventory).toBeNull();
+    expect(getSnapshot().inventoryWindowId).toBeNull();
+    expect(getSnapshot().permanentInventory).toBe(committed);
 
     beginMenu(ordinary, MENU_BEHAVE_PERMINV);
     endMenu(ordinary, "New session item");

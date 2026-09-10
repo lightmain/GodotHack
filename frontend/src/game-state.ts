@@ -322,7 +322,8 @@ export function clearWindow(winid: number): void {
 }
 
 /**
- * Destroy a NetHack window and dismiss UI which references it.
+ * Destroy a NetHack window and dismiss transient UI which references it.
+ * The last committed permanent inventory remains visible until session reset.
  * @param winid - target window ID.
  */
 export function destroyWindow(winid: number): void {
@@ -334,15 +335,11 @@ export function destroyWindow(winid: number): void {
   const inventoryWindowId = snapshot.inventoryWindowId === winid
     ? null
     : snapshot.inventoryWindowId;
-  const permanentInventory = snapshot.permanentInventory?.windowId === winid
-    ? null
-    : snapshot.permanentInventory;
   if (
     modal !== snapshot.modal
     || inventoryWindowId !== snapshot.inventoryWindowId
-    || permanentInventory !== snapshot.permanentInventory
   ) {
-    publish({ modal, inventoryWindowId, permanentInventory });
+    publish({ modal, inventoryWindowId });
   }
 }
 

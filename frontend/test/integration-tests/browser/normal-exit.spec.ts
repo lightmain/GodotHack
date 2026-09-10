@@ -3,6 +3,7 @@ import { captureErrors } from "./helpers/browser-errors";
 import { exportDiagnosticLog } from "./helpers/diagnostic-artifact";
 import {
   quitAndReturnHome,
+  openHome,
   saveAndReturnHome,
   startNewGame,
   startNewGameFromHome,
@@ -33,5 +34,36 @@ test("quits an active game and starts a clean second session", async ({
   expect(moduleIds.length).toBeGreaterThanOrEqual(3);
   expect(moduleIds.every(Boolean)).toBe(true);
   expect(new Set(moduleIds).size).toBe(moduleIds.length);
+  expect(errors).toEqual({ console: [], page: [] });
+});
+
+test("retains the last permanent inventory through end-game disclosure", async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await openHome(page, "inventory-at-gameover");
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("checkbox", { name: "Permanent inventory" }).check();
+  await page.getByRole("button", { name: "Apply" }).click();
+  await startNewGameFromHome(page, "InventoryGameover");
+
+  const inventory = page.getByRole("region", { name: "Inventory" });
+  await expect(inventory).toBeVisible();
+  const lastItem = inventory.locator(".permanent-inventory-item").last();
+  const lastItemText = await lastItem.textContent();
+  expect(lastItemText?.trim()).not.toBe("");
+
+  await page.keyboard.press("#");
+  const commandDialog = page.getByRole("dialog", { name: "Extended command" });
+  await expect(commandDialog).toBeVisible();
+  await commandDialog.locator("input").fill("quit");
+  await commandDialog.locator("input").press("Enter");
+  await expect(page.getByText(/Really quit without saving/)).toBeVisible();
+  await page.keyboard.press("y");
+  await expect(page.getByText(
+    /Do you want (your possessions identified|to see)/,
+  )).toBeVisible();
+  await expect(inventory).toBeVisible();
+  await expect(inventory).toContainText(lastItemText ?? "");
   expect(errors).toEqual({ console: [], page: [] });
 });

@@ -234,8 +234,9 @@ parseoptions()
 窗口销毁。
 
 游戏结束时核心会销毁 `WIN_INVEN`；`shim_destroy_nhwindow()` 使
-`inventoryWindowId` 失效。bridge reset 还会清空所有窗口，覆盖 fatal、启动
-失败和下一局等路径。
+`inventoryWindowId` 失效并停止后续更新，但前端保留最后一次已提交快照供终局
+披露和墓碑流程显示。bridge reset 才清空快照和所有窗口，覆盖 fatal、启动失败
+和下一局等路径。
 
 ## 5. shim 最小修改
 
@@ -487,12 +488,14 @@ permanentInventory != null
 ```
 
 关闭开关会立即隐藏面板，即使核心保留 `WIN_INVEN` 供后续重用。窗口销毁或
-bridge reset 会清空 ID，防止下一局显示旧内容。
+bridge reset 会清空活跃 ID；窗口销毁后最后一次已提交快照保留到当前 session
+结束，bridge reset 再清空内容，防止下一局显示旧物品。
 
 每次 `beginMenu()` 清空构建缓冲，`selectMenu()` 原子替换已提交快照。窗口
-销毁按 `windowId` 清除对应提交值。React 不在 `add_menu()` 过程中渲染半成品
-列表。revision 在每个 session 内单调递增，bridge reset 后重新开始；它只表示
-“这是否仍是用户看到的同一份列表”，不是跨 session 的物品 ID。
+销毁按 `windowId` 清除活跃窗口引用，但不删除最后一次提交值。React 不在
+`add_menu()` 过程中渲染半成品列表。revision 在每个 session 内单调递增，
+bridge reset 后重新开始；它只表示“这是否仍是用户看到的同一份列表”，不是跨
+session 的物品 ID。
 
 ### 8.2 数据映射
 
@@ -698,7 +701,8 @@ doc/BlissHack/plans/prealpha-3.md
 - 每次完整提交递增 revision；构建中的菜单不改变已提交 revision。
 - 普通 `PICK_NONE` 仍是可关闭 modal。
 - 永久窗口和普通选择菜单同时存在时互不覆盖。
-- 窗口 destroy、bridge reset 和下一 session 清除 inventory ID。
+- 窗口 destroy 清除活跃 inventory ID 并保留最后快照；bridge reset 和下一
+  session 清除两者。
 - `permInvent=false` 时即使旧窗口仍存在也不渲染。
 - item snapshot 保留 identifier 和 accelerator，不把数组索引当身份。
 
