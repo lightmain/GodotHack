@@ -56,7 +56,8 @@ describe("SettingsScreen", () => {
     expect(html).toContain("Sort inventory");
     expect(html).toContain("Show experience");
     expect(html).toContain("Show turn count");
-    expect(html).toContain("Permanent inventory");
+    expect(html).toContain("<legend>Permanent Inventory</legend>");
+    expect(html).toContain("Enable Permanent Inventory");
     expect(html).toContain("Contents");
     expect(html).toContain("All except gold");
     expect(html).toContain("Full including gold");
@@ -73,7 +74,8 @@ describe("SettingsScreen", () => {
     expect(html).toMatch(/<input(?=[^>]*checked="")(?=[^>]*value="5")[^>]*>/);
     expect(html).toContain("<option value=\"0\" selected=\"\">");
     expect(html).toMatch(/<input(?=[^>]*checked="")(?=[^>]*value="right")[^>]*>/);
-    expect(labelMarkup(html, "Permanent inventory")).not.toContain("checked");
+    expect(labelMarkup(html, "Enable Permanent Inventory"))
+      .not.toContain("checked");
     expect(html).toContain('<option value="all" selected="">');
     expect(labelMarkup(html, "Contents")).toContain("disabled");
     expect(labelMarkup(html, "Start collapsed")).toContain("disabled");
@@ -125,7 +127,7 @@ describe("SettingsScreen", () => {
     expect(html).not.toContain("Export Profile");
     expect(html).not.toContain("Export Full Backup");
     expect(html).not.toContain("Clear Local Data");
-    expect(html).toContain("Permanent inventory");
+    expect(html).toContain("Enable Permanent Inventory");
     expect(html).toContain("Contents");
   });
 });

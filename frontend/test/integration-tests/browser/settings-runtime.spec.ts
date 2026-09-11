@@ -19,7 +19,10 @@ test("installs current settings for new and continued games", async ({ page }) =
   await page.getByRole("combobox", { name: "Movement keys" })
     .selectOption("1");
   await page.getByRole("checkbox", { name: "Show turn count" }).check();
-  await page.getByRole("checkbox", { name: "Permanent inventory" }).check();
+  await page.getByRole("checkbox", {
+    name: "Enable Permanent Inventory",
+    exact: true,
+  }).check();
   await page.getByRole("button", { name: "Apply" }).click();
 
   await startWithoutTutorial(page, name);
@@ -67,7 +70,10 @@ test("renders and collapses the core permanent inventory without a modal", async
   await page.getByRole("checkbox", {
     name: "Offer tutorial for new games",
   }).uncheck();
-  await page.getByRole("checkbox", { name: "Permanent inventory" }).check();
+  await page.getByRole("checkbox", {
+    name: "Enable Permanent Inventory",
+    exact: true,
+  }).check();
   await page.getByRole("button", { name: "Apply" }).click();
 
   await startWithoutTutorial(page, "PermInventory-Wiz");

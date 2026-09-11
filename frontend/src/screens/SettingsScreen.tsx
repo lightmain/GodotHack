@@ -519,10 +519,11 @@ export function SettingsScreen({
               label="Sort inventory"
               onChange={(sortpack) => updateNetHack(setDraft, { sortpack })}
             />
-            <div className="settings-subsection">
+            <fieldset className="settings-field settings-subsection">
+              <legend>Permanent Inventory</legend>
               <ToggleField
                 checked={draft.nethack.permInvent}
-                label="Permanent inventory"
+                label="Enable Permanent Inventory"
                 onChange={(permInvent) => {
                   updateNetHack(setDraft, { permInvent });
                 }}
@@ -571,7 +572,7 @@ export function SettingsScreen({
                   }}
                 />
               </div>
-            </div>
+            </fieldset>
           </div>
         </section>
 

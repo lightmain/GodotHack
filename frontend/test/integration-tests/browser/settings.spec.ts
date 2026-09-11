@@ -34,7 +34,10 @@ test("edits, persists, and cancels Home Settings without replacing the module", 
   }).uncheck();
   await page.getByRole("checkbox", { name: "Show experience" }).check();
   await page.getByRole("checkbox", { name: "Show turn count" }).check();
-  await page.getByRole("checkbox", { name: "Permanent inventory" }).check();
+  await page.getByRole("checkbox", {
+    name: "Enable Permanent Inventory",
+    exact: true,
+  }).check();
   await page.getByRole("combobox", { name: "Contents" }).selectOption("full");
   await page.getByRole("radio", { name: "Below" }).check();
   await page.getByRole("checkbox", { name: "Start collapsed" }).check();

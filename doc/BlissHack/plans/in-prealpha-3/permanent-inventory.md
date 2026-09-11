@@ -608,7 +608,7 @@ Settings 按玩家任务而不是 profile 的存储结构组织。新增独立�
 
 - `Automatic pickup` 和 `Pickup categories`。
 - `Sort inventory`。
-- `Permanent inventory` 主开关。
+- `Permanent Inventory` 小标题和 `Enable Permanent Inventory` 主开关。
 - `Contents`：`All except gold` / `Full including gold` /
   `Items in use` select。
 - `Preferred position`：`Right` / `Below` segmented control。

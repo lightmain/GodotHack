@@ -754,6 +754,13 @@
   margin-bottom: 7px;
 }
 
+.settings-field.settings-subsection > legend {
+  padding-right: 1ch;
+  color: #8f989d;
+  font-weight: 700;
+  font-size: 14px;
+}
+
 .settings-segments {
   width: fit-content;
   display: grid;

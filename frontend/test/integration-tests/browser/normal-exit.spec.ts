@@ -43,7 +43,10 @@ test("retains the last permanent inventory through end-game disclosure", async (
   const errors = captureErrors(page);
   await openHome(page, "inventory-at-gameover");
   await page.getByRole("button", { name: "Settings" }).click();
-  await page.getByRole("checkbox", { name: "Permanent inventory" }).check();
+  await page.getByRole("checkbox", {
+    name: "Enable Permanent Inventory",
+    exact: true,
+  }).check();
   await page.getByRole("button", { name: "Apply" }).click();
   await startNewGameFromHome(page, "InventoryGameover");
 
