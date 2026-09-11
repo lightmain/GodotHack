@@ -35,7 +35,7 @@ interface SessionStartRequest {
   settings?: ReturnType<typeof createDefaultProfile>["nethack"];
 }
 
-interface StageTwoSessionManager {
+interface HomeOwnershipManager {
   initialize(): Promise<HomePreparation>;
   startSession(request: SessionStartRequest): Promise<SessionHandle>;
   deleteSave(moduleId: string, path: string): Promise<HomePreparation>;
@@ -47,7 +47,7 @@ interface Deferred<T> {
   reject: (error: unknown) => void;
 }
 
-interface StageTwoModuleHarness {
+interface HomeOwnershipModuleHarness {
   module: EmscriptenModule;
   main: Deferred<unknown>;
 }
@@ -102,10 +102,10 @@ function deferred<T>(): Deferred<T> {
 }
 
 /**
- * Create the minimum WASM module needed by stage-two ownership tests.
+ * Create the minimum WASM module needed by Home ownership tests.
  * @returns module and controllable main result.
  */
-function createModuleHarness(): StageTwoModuleHarness {
+function createModuleHarness(): HomeOwnershipModuleHarness {
   const main = deferred<unknown>();
   return {
     main,
@@ -147,16 +147,16 @@ function callbackFor(
 
 /**
  * Construct the future manager contract through the current exported factory.
- * @param options - stage-two dependencies.
- * @returns manager interpreted through the stage-two public contract.
+ * @param options - Home ownership dependencies.
+ * @returns manager interpreted through the Home ownership contract.
  */
-function createStageTwoManager(
+function createHomeOwnershipManager(
   options: Omit<SessionManagerOptions, "createStorageService">
     & {
       createStorageService?: (module: EmscriptenModule) => StorageServiceFake;
     }
     & Record<string, unknown>,
-): StageTwoSessionManager {
+): HomeOwnershipManager {
   const {
     createStorageService: createStorage,
     ...managerOptions
@@ -179,7 +179,7 @@ function createStageTwoManager(
         }),
       }
       : {}),
-  }) as unknown as StageTwoSessionManager;
+  }) as unknown as HomeOwnershipManager;
 }
 
 beforeEach(() => {
@@ -239,7 +239,7 @@ describe("home module ownership", () => {
     const installRuntimeConfig = vi.fn(() => {
       order.push("install-rc");
     });
-    const manager = createStageTwoManager({
+    const manager = createHomeOwnershipManager({
       createModuleId: () => "module-1",
       createSessionId: () => "session-1",
       createStorageService: () => storage,
@@ -334,7 +334,7 @@ describe("home module ownership", () => {
     const dispatch = vi.fn<(action: AppAction) => void>();
     const factory = vi.fn(async () => module.module);
     const setRestoreRequired = vi.fn();
-    const manager = createStageTwoManager({
+    const manager = createHomeOwnershipManager({
       callbackHost,
       createModuleId: () => "module-1",
       createSessionId: () => "session-1",
@@ -404,7 +404,7 @@ describe("home save deletion", () => {
       flush: vi.fn(async () => undefined),
     };
     const dispatch = vi.fn<(action: AppAction) => void>();
-    const manager = createStageTwoManager({
+    const manager = createHomeOwnershipManager({
       createModuleId: () => "module-1",
       createSessionId: () => "session-1",
       createStorageService: () => storage,
@@ -450,7 +450,7 @@ describe("home save deletion", () => {
       importSave: vi.fn(async () => ({ status: "imported", path: "/save/0Ada" })),
       flush: vi.fn(async () => undefined),
     };
-    const manager = createStageTwoManager({
+    const manager = createHomeOwnershipManager({
       createModuleId: () => "module-1",
       createSessionId: () => "session-1",
       createStorageService: () => storage,
@@ -496,7 +496,7 @@ describe("home save deletion", () => {
       importSave: vi.fn(async () => ({ status: "imported", path: "/save/0Ada" })),
       flush: vi.fn(async () => undefined),
     };
-    const manager = createStageTwoManager({
+    const manager = createHomeOwnershipManager({
       createModuleId: () => "module-1",
       createSessionId: () => "session-1",
       createStorageService: () => storage,
@@ -564,7 +564,7 @@ describe("module retirement ordering", () => {
       order.push(module === firstModule.module ? "factory:first" : "factory:second");
       return module;
     });
-    const manager = createStageTwoManager({
+    const manager = createHomeOwnershipManager({
       callbackHost,
       createModuleId: () => `module-${++moduleId}`,
       createSessionId: () => "session-1",

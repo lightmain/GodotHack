@@ -30,10 +30,12 @@
 ## 2. 当前架构事实
 
 - NetHack C 核心编译为 WebAssembly，通过 `win/shim/winshim.c`、
-  Emscripten Asyncify 和 `frontend/src/nethack-bridge.ts` 与 React 通信。
+  Emscripten Asyncify 和 `frontend/src/nethack-bridge.ts` façade 与 React
+  通信；module、ABI 解码和输入状态实现在 `frontend/src/bridge/`。
 - `frontend/src/app/app-state.ts` 是顶层应用生命周期的唯一状态机。
-- `frontend/src/session/session-manager.ts` 管理唯一活动 WASM session、module、
-  callback 和清理过程。
+- `frontend/src/session/session-manager.ts` 是稳定 façade；
+  `session-lifecycle.ts` 管理唯一活动 WASM session、module、callback 和清理，
+  `home-operations.ts` 管理 Home 数据操作，两者共享一个显式 context。
 - 每局 game module 在进入首页读取存档时创建；首页没有活动 session，也不调用
   `main()`。用户开始或继续游戏时，新 session 认领同一个 module。
 - module、session 和首页之间的权威生命周期见
@@ -56,6 +58,7 @@
 - `frontend/src/App.tsx`
 - `frontend/src/app/app-state.ts`
 - `frontend/src/session/session-manager.ts`
+- `frontend/src/session/session-lifecycle.ts` 或 `home-operations.ts`
 - 任务相关 screen、辅助模块及同目录测试
 
 先检查现有组件和 CSS 约定，不另建重复状态或生命周期管理器。
@@ -71,6 +74,7 @@
 - `win/shim/winshim.c`
 - `sys/libnh/libnhmain.c`
 - `frontend/src/nethack-bridge.ts` 及其测试
+- `frontend/src/bridge/` 下与任务对应的实现模块
 
 文档与行为冲突时必须检查实际 C 调用链。只有能确认文档过时，才以当前代码为准。
 

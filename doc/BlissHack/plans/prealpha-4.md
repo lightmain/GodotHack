@@ -336,10 +336,10 @@ frontend/src/session/
 └── session-lifecycle.ts
 ```
 
-- `session-manager.ts`：创建 context、组合公开 API、保留兼容导出。
+- `session-manager.ts`：只保留稳定 façade 和兼容类型导出。
 - `home-operations.ts`：刷新、删除、导入导出、备份和清除本地数据。
-- `session-lifecycle.ts`：启动、callback 注册、flush、restore failure、
-  retire、fatal 和 dispose。
+- `session-lifecycle.ts`：创建 context，并负责启动、callback 注册、flush、
+  restore failure、retire、fatal 和 dispose。
 - `session-types.ts`：公开类型和内部 record 类型；禁止反向导入 manager。
 
 输入转发仍必须经过 active session 检查，不能让 screen 直接持有 bridge
@@ -350,10 +350,9 @@ controller。
 把现有历史阶段测试逐步整理为：
 
 ```text
-session-manager.home.test.ts
-session-manager.lifecycle.test.ts
-session-manager.lock.test.ts
-session-manager.backup.test.ts
+home-operations.test.ts
+home-ownership.test.ts
+session-lifecycle.test.ts
 ```
 
 测试移动与实现移动保持同一提交，不一次性重写 fixture。
@@ -365,6 +364,30 @@ session-manager.backup.test.ts
 - Web Locks 的短操作锁和长 session lease 顺序不变。
 - 保存退出、flush、restore rollback 和下一 module 创建顺序不变。
 - 完整单元、WASM、浏览器、多页面锁和长流程测试通过。
+
+### 9.5 实施结果
+
+阶段五于 2026-09-11 在长期 `prealpha-4` 分支完成：
+
+- 先在原单文件内建立 `SessionManagerContext`，集中保存依赖、当前 module、
+  session、三个进行中 Promise、锁、fatal 和 disposed 状态；36 个相关测试通过
+  后才开始移动函数。
+- `session-manager.ts` 从 1699 行缩减为 14 行稳定 façade，所有外部调用路径和
+  公开类型名保持不变。
+- `session-types.ts` 集中公开契约、内部 record 和 context 类型，且不反向导入
+  manager façade。
+- `home-operations.ts` 独立负责 Home 刷新、raw save、完整备份、清除数据、
+  profile operation 和短锁/长 lease 获取。
+- `session-lifecycle.ts` 独立负责 module 准备、session 启动、callback 所有权、
+  flush、Continue 恢复失败、retire、fatal、recover 和 dispose。
+- Home 与 lifecycle 只共享一个 context；没有复制 module、session、lease 或
+  Promise 状态，也没有新增模块级可变全局。
+- 历史阶段测试重命名为 `home-operations.test.ts`、
+  `home-ownership.test.ts` 和 `session-lifecycle.test.ts`，测试内容与断言保持
+  不变。
+- `npm run lint`、407 个单元测试、真实 WASM 的 40 项检查、
+  `npm run build`、35 个 Chromium 浏览器测试、12 个 Firefox/WebKit
+  基础测试、4 个长流程测试及性能测试全部通过。
 
 ## 10. 阶段六：收尾
 

@@ -37,7 +37,7 @@ M win/shim/winshim.c
   `doc/BlissHack/shim-interface-reference.md` 第 6.1 节。
 - **回归测试**：
   - `frontend/src/nethack-bridge.test.ts`
-  - `frontend/src/session/session-manager.test.ts`
+  - `frontend/src/session/session-lifecycle.test.ts`
   - `frontend/test/integration-tests/browser/playable-frontend.spec.ts`
 
 ### 2.2 浏览器存档启动 helper
@@ -58,7 +58,7 @@ M win/shim/winshim.c
   - `frontend/test/integration-tests/wasm-test.mjs`
   - `frontend/src/nethack-bridge.test.ts`
   - `frontend/src/storage/storage-service.test.ts`
-  - `frontend/src/session/session-manager.stage-two.test.ts`
+  - `frontend/src/session/home-ownership.test.ts`
   - Continue 相关 Playwright 流程
 
 ### 2.3 Emscripten 导出列表

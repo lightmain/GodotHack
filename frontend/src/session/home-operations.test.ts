@@ -39,7 +39,7 @@ interface Conflict {
   incoming: { identity: SaveIdentity; modifiedAt: number | null };
 }
 
-interface StageThreeManager {
+interface HomeOperationsManager {
   initialize(): Promise<{
     moduleId: string;
     saves: ReadySave[];
@@ -117,11 +117,11 @@ function createModule(): EmscriptenModule {
   };
 }
 
-/** Create a manager through its future stage-three public contract. */
+/** Create a manager through its Home data operations contract. */
 function createManager(
   storage: Record<string, unknown>,
   dispatch = vi.fn<(action: AppAction) => void>(),
-): { manager: StageThreeManager; dispatch: typeof dispatch } {
+): { manager: HomeOperationsManager; dispatch: typeof dispatch } {
   const options: SessionManagerOptions & Record<string, unknown> = {
     createModuleId: () => "module-1",
     createSessionId: () => "session-1",
@@ -131,7 +131,7 @@ function createManager(
     moduleFactory: vi.fn(async () => createModule()),
   };
   return {
-    manager: createSessionManager(options) as unknown as StageThreeManager,
+    manager: createSessionManager(options) as unknown as HomeOperationsManager,
     dispatch,
   };
 }
