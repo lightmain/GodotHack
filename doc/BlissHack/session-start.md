@@ -9,11 +9,11 @@
 
 1. 完整阅读仓库根目录的 `AGENTS.md` 和 `AGENTS-cn.md`。
 2. 阅读 `README-cn.md`，确认当前产品定位、运行方式、测试入口和许可证说明。
-3. 当前版本为 prealpha-3。阅读
-   `doc/BlissHack/plans/prealpha-3.md` 的版本目标、范围边界、当前任务所属阶段、
-   阶段验收标准和阶段交付规则；阶段一另读
-   `plans/in-prealpha-3/version-and-reproducible-build.md`。不需要无目的地加载
-   全文。
+3. 当前版本为 prealpha-4。阅读
+   `doc/BlissHack/plans/prealpha-4.md` 的版本目标、范围边界、当前任务所属阶段、
+   阶段验收标准和阶段交付规则。prealpha-4 只做行为保持的前端代码重构；
+   涉及现有功能契约时再读取对应的 prealpha-2 或 prealpha-3 设计文档，不需要
+   无目的地加载全文。
 4. 检查仓库现场：
 
    ```bash

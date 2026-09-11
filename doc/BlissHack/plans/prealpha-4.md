@@ -123,6 +123,26 @@ CSS 层叠结果。`index.css` 继续只负责根元素和浏览器基础样式�
 - Settings、Home、save picker、游戏画面的桌面和窄视口截图无差异。
 - Chromium 浏览器基础流程通过。
 
+### 5.4 实施结果
+
+阶段一于 2026-09-11 在 `dev/prealpha-4-stage-1` 分支完成：
+
+- `App.css` 缩减为 4 行固定顺序的 `@import` 聚合入口。
+- 新增 `shared.css`、`home.css`、`settings.css` 和 `game.css`，分别为
+  5、641、731 和 671 行。
+- 原有 CSS 选择器和声明保持不变；末尾混合的 700px media query 只按 Home
+  与 Game 归属拆成两个等价区块。
+- 删除 `GameScreen.tsx` 对 `App.css` 的重复导入，由 `App.tsx` 统一加载。
+- `VERSION`、README 和 Agent session 启动入口切换到 `prealpha-4`；备份和
+  profile 测试中的 `prealpha-3` 历史 fixture 保持不变。
+- 拆分前后分别截取 Home、Settings 顶部、Settings 底部和永久背包 harness
+  的桌面及窄视口图片，共 8 组；归一化版本文字后 PNG 字节完全一致。
+- `npm run lint`、407 个单元测试、`npm run build`、35 个 Chromium
+  浏览器测试以及 12 个 Firefox/WebKit 基础测试全部通过。
+
+现有测试已经覆盖 CSS 入口、各主要页面和响应式交互，像素基线又能直接证明
+机械拆分没有改变渲染，因此本阶段没有新增长期维护的截图测试。
+
 ## 6. 阶段二：Settings 和数据管理组件
 
 ### 6.1 目标结构

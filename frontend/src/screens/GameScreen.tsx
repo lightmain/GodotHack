@@ -14,7 +14,6 @@ import {
   Save,
   Settings,
 } from "lucide-react";
-import "../App.css";
 import {
   BL_CONDITION,
   PICK_ANY,

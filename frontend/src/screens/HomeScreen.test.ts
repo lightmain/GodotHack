@@ -44,7 +44,7 @@ describe("HomeScreen", () => {
     expect(html).toMatch(/unofficial|非官方/i);
     expect(html).toMatch(/<footer[\s\S]*BlissHack[\s\S]*copyright/i);
     expect(html).toMatch(/<a[^>]+href=[^>]+>[^<]*licen[cs]e[^<]*<\/a>/i);
-    expect(html.match(/prealpha-3/g)).toHaveLength(2);
+    expect(html.match(/prealpha-4/g)).toHaveLength(2);
   });
 
   it("does not start a session while rendering the home screen", () => {

@@ -35,7 +35,7 @@ test("shows a fatal page and exports a private diagnostic log", async ({
 
   const { diagnostic, text } = await exportDiagnosticLog(page);
   expect(diagnostic.schemaVersion).toBe(1);
-  expect(diagnostic.productVersion).toBe("prealpha-3");
+  expect(diagnostic.productVersion).toBe("prealpha-4");
   expect(diagnostic.buildId).toBeTruthy();
   expect(diagnostic.events).toContainEqual(expect.objectContaining({
     event: "app.started",

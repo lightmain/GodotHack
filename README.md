@@ -21,9 +21,9 @@ frontend. These changes are documented in
 
 ## Project Status
 
-**prealpha-2 is complete and prealpha-3 is in final polish.**
+**prealpha-3 is complete and prealpha-4 is in development.**
 
-prealpha-4 is planned as a smaller, refactoring-only milestone. It will add no
+prealpha-4 is a smaller, refactoring-only milestone. It will add no
 player-facing features and will focus on splitting large frontend files,
 clarifying module ownership, and reducing the context needed for future changes.
 

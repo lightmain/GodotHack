@@ -116,7 +116,7 @@ test("exports, previews, imports, and restores a complete profile", async ({
   const exported = JSON.parse((await readDownload(download)).toString("utf8"));
   expect(exported).toMatchObject({
     schemaVersion: 1,
-    productVersion: "prealpha-3",
+    productVersion: "prealpha-4",
   });
 
   exported.interface.terminalFontSize = "large";
