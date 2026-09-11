@@ -201,6 +201,14 @@ test("restores data-action focus after recoverable failures", async ({
     .toHaveAttribute("aria-invalid", "true");
   await expect(importButton).toBeFocused();
 
+  const clearButton = page.getByRole("button", { name: "Clear Local Data" });
+  await clearButton.click();
+  await expect(
+    page.getByRole("alertdialog", { name: "Clear local data" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(clearButton).toBeFocused();
+
   await page.evaluate(() => {
     const original = Storage.prototype.removeItem;
     Storage.prototype.removeItem = function failOnce(key: string): void {
@@ -208,7 +216,7 @@ test("restores data-action focus after recoverable failures", async ({
       throw new Error(`blocked ${key}`);
     };
   });
-  await page.getByRole("button", { name: "Clear Local Data" }).click();
+  await clearButton.click();
   const clear = page.getByRole("alertdialog", { name: "Clear local data" });
   await clear.getByRole("textbox").fill("CLEAR BLISSHACK DATA");
   await clear.getByRole("button", { name: "Clear", exact: true }).click();
@@ -217,7 +225,6 @@ test("restores data-action focus after recoverable failures", async ({
     "Local data could not be cleared. Existing data was preserved when possible.",
   );
   await expect(clearError).toHaveAttribute("id", "data-operation-error");
-  const clearButton = page.getByRole("button", { name: "Clear Local Data" });
   await expect(clearButton).toHaveAttribute(
     "aria-describedby",
     "data-operation-error",

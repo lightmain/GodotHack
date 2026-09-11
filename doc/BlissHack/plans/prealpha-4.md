@@ -9,7 +9,8 @@ prealpha-1 至 prealpha-3 已经建立的产品行为和测试基线之上，降
 本项目没有传统 release、tag 或安装包发布节点。部署分支经 GitHub Actions
 push 后即成为线上版本；prealpha 阶段当前没有玩家用户。因此本计划不设置
 独立的“发布冻结期”，但部署分支上的每个提交仍必须能够构建、测试并正常游玩。
-重构工作在独立分支完成一个可独立验收的阶段后，再合入并 push 到部署分支。
+全部重构工作在长期 `prealpha-4` 分支连续进行；每个阶段保持独立、可验收的
+提交，完成整个计划后再合入并 push 到部署分支。
 
 prealpha-4 的工作量应明显小于 prealpha-2 和 prealpha-3。它只整理当前已经
 验证的 TypeScript、React 和 CSS，不借重构之名加入新功能或重新设计产品。
@@ -87,8 +88,8 @@ prealpha-4 的工作量应明显小于 prealpha-2 和 prealpha-3。它只整理�
    抽共享组件。
 8. **测试随职责移动**：实现拆分后，测试按同一领域拆分，不保留只反映历史
    开发阶段的文件名。
-9. **部署分支持续可用**：独立分支上的阶段未完成前不合入部署分支；合入后的
-   每个 commit 都必须满足对应阶段门禁。
+9. **部署分支持续可用**：`prealpha-4` 分支上的重构未完成前不合入部署分支；
+   最终合入时的每个 commit 都必须满足对应阶段门禁。
 
 ## 5. 阶段一：样式按页面拆分
 
@@ -151,6 +152,8 @@ CSS 层叠结果。`index.css` 继续只负责根元素和浏览器基础样式�
 
 ```text
 frontend/src/screens/settings/
+├── DataManagementControls.tsx
+├── DataManagementDialogs.tsx
 ├── SettingsControls.tsx
 ├── SettingsSections.tsx
 ├── SettingsDialogs.tsx
@@ -178,6 +181,24 @@ frontend/src/screens/settings/
 - modal 的初始焦点、Tab 循环、Esc、背景 `inert` 和返回焦点不变。
 - profile、backup 和 clear data 流程的单元及浏览器测试通过。
 - 不修改 profile 类型、校验器或持久化格式。
+
+### 6.4 实施结果
+
+阶段二于 2026-09-11 在长期 `prealpha-4` 分支完成：
+
+- `SettingsScreen.tsx` 从 1071 行缩减到 497 行，只保留 draft、提交、
+  profile 文件操作、Data Management 接线和页面组合。
+- `DataManagementSection.tsx` 从 789 行缩减到 382 行，保留持久化、备份导入
+  导出、清除数据和 profile 应用工作流。
+- 字段区、基础控件、Profile 操作、Data Management 操作及五个 dialog
+  分别迁入 `screens/settings/` 下的职责文件。
+- Settings 和 Data Management 共用唯一的 `SettingsModal`，统一初始焦点、
+  Tab 循环、Esc、背景 `inert` 和返回焦点行为。
+- 新增 Data clear dialog 的 Esc 返回焦点特征测试；该测试在抽取前后均通过。
+- profile 类型、校验器、持久化 key 和导入导出格式均未修改。
+- 8 组阶段一/阶段二页面截图逐字节一致。
+- `npm run lint`、407 个单元测试、`npm run build`、35 个 Chromium
+  浏览器测试及 12 个 Firefox/WebKit 基础测试全部通过。
 
 ## 7. 阶段三：游戏界面组件
 

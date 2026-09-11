@@ -3,23 +3,12 @@ import {
   useRef,
   useState,
   type ChangeEvent,
-  type ReactNode,
 } from "react";
-import {
-  Archive,
-  Database,
-  Download,
-  ShieldCheck,
-  Trash2,
-  Upload,
-} from "lucide-react";
-import { createPortal } from "react-dom";
 import {
   BACKUP_IMPORT_MAX_BYTES,
 } from "../backup/backup-file";
 import type {
   BackupImportPreview,
-  BackupImportSummary,
 } from "../backup/backup-operations";
 import { BackupPreviewStaleError } from "../backup/backup-operations";
 import {
@@ -27,13 +16,20 @@ import {
   type PersistenceAdapter,
   type PersistenceStatus,
 } from "../storage/persistence";
-import { diffProfiles } from "../settings/profile-diff";
 import type { BlissHackProfileV1 } from "../settings/profile";
 import type {
   FullBackupExport,
   FullBackupImportResult,
 } from "../session/session-manager";
 import { GameLockCancelledError } from "../concurrency/game-lock";
+import { DataManagementControls } from "./settings/DataManagementControls";
+import {
+  BackupImportResultsDialog,
+  BackupPreviewDialog,
+  CLEAR_CONFIRMATION,
+  ClearLocalDataDialog,
+  type CompletedImport,
+} from "./settings/DataManagementDialogs";
 
 interface DataManagementSectionProps {
   dirty: boolean;
@@ -54,12 +50,6 @@ interface DataManagementSectionProps {
   storageAvailable: boolean;
 }
 
-interface CompletedImport {
-  preview: BackupImportPreview;
-  summary: FullBackupImportResult;
-  profileApplied: boolean | null;
-}
-
 type DataErrorSource = "backup-export" | "backup-import" | "clear";
 
 interface DataError {
@@ -67,7 +57,6 @@ interface DataError {
   source: DataErrorSource;
 }
 
-const CLEAR_CONFIRMATION = "CLEAR BLISSHACK DATA";
 const IGNORE_PERSISTENCE_RESULT = () => undefined;
 
 /**
@@ -218,7 +207,6 @@ export function DataManagementSection({
           source: "backup-import",
         });
         setPreview(null);
-        restoreFocus(importButtonRef);
       }
     } finally {
       setPending(false);
@@ -253,7 +241,6 @@ export function DataManagementSection({
         });
         setClearOpen(false);
         setClearText("");
-        restoreFocus(clearButtonRef);
       }
     } finally {
       setPending(false);
@@ -368,334 +355,73 @@ export function DataManagementSection({
       </section>
 
       {preview && (
-        <Modal
-          label="Import full backup"
-          onCancel={pending ? undefined : () => {
-            setPreview(null);
-            restoreFocus(importButtonRef);
+        <BackupPreviewDialog
+          errorMessage={
+            error?.source === "backup-import" ? error.message : undefined
+          }
+          onCancel={() => setPreview(null)}
+          onImport={() => void importBackup()}
+          onOverwriteChange={(fileName, checked) => {
+            setOverwrites((current) => {
+              const next = new Set(current);
+              if (checked) next.add(fileName);
+              else next.delete(fileName);
+              return next;
+            });
           }}
-        >
-          <h2>Import full backup</h2>
-          {error?.source === "backup-import" && (
-            <p className="settings-error" id="data-operation-error" role="alert">
-              {error.message}
-            </p>
-          )}
-          <dl className="settings-import-meta">
-            <div><dt>Version</dt><dd>{preview.source.productVersion}</dd></div>
-            <div><dt>Build</dt><dd>{preview.source.buildId}</dd></div>
-            <div>
-              <dt>Exported</dt>
-              <dd>{formatTime(preview.source.exportedAt)}</dd>
-            </div>
-          </dl>
-          <p>
-            {profileDifferenceCount(profile, preview.source.profile)} profile
-            changes, {preview.entries.length} saved games
-          </p>
-          {profileDifferenceCount(profile, preview.source.profile) > 0 && (
-            <div className="settings-differences backup-profile-differences">
-              {diffProfiles(profile, preview.source.profile).map((difference) => (
-                <div key={difference.path}>
-                  <strong>{difference.label}</strong>
-                  <span>{difference.current}</span>
-                  <span aria-hidden="true">-&gt;</span>
-                  <span>{difference.incoming}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="backup-preview-list">
-            {preview.entries.map((entry) => (
-              <label key={entry.fileName}>
-                {entry.classification === "conflict"
-                  ? (
-                    <input
-                      checked={overwrites.has(entry.fileName)}
-                      disabled={pending}
-                      onChange={(event) => {
-                        setOverwrites((current) => {
-                          const next = new Set(current);
-                          if (event.currentTarget.checked) next.add(entry.fileName);
-                          else next.delete(entry.fileName);
-                          return next;
-                        });
-                      }}
-                      type="checkbox"
-                    />
-                  )
-                  : <span aria-hidden="true" className="backup-preview-marker" />}
-                <span>{entry.identity?.playerName ?? entry.fileName}</span>
-                <small>{classificationLabel(entry.classification)}</small>
-              </label>
-            ))}
-          </div>
-          <div className="settings-modal-actions">
-            <button
-              autoFocus
-              data-modal-initial-focus
-              disabled={pending}
-              onClick={() => {
-                setPreview(null);
-                restoreFocus(importButtonRef);
-              }}
-              type="button"
-            >
-              Cancel
-            </button>
-            <button
-              aria-describedby={
-                error?.source === "backup-import"
-                  ? "data-operation-error"
-                  : undefined
-              }
-              className="settings-primary"
-              disabled={pending}
-              onClick={() => void importBackup()}
-              type="button"
-            >
-              Import Saves
-            </button>
-          </div>
-        </Modal>
+          overwrites={overwrites}
+          pending={pending}
+          preview={preview}
+          profile={profile}
+          returnFocusRef={importButtonRef}
+        />
       )}
 
       {completed && (
-        <Modal
-          label="Backup import results"
-          onCancel={completed.summary.refreshFailed
-            ? undefined
-            : () => {
-              setCompleted(null);
-              restoreFocus(importButtonRef);
-            }}
-        >
-          <h2>Backup import results</h2>
-          <div className="backup-result-counts" role="status">
-            <span><strong>{completed.summary.imported}</strong> imported</span>
-            <span><strong>{completed.summary.skipped}</strong> skipped</span>
-            <span><strong>{completed.summary.failed}</strong> failed</span>
-          </div>
-          {completed.summary.refreshFailed && (
-            <p className="settings-warning" role="alert">
-              Saved games were processed, but the list could not be refreshed.
-              Reload BlissHack before starting a game.
-            </p>
-          )}
-          <details className="backup-result-details">
-            <summary>Individual save results</summary>
-            <ul>
-              {completed.summary.results.map((result) => (
-                <li key={result.fileName}>
-                  <span>{result.fileName}</span>
-                  <small>{resultLabel(result.status, result.reason)}</small>
-                </li>
-              ))}
-            </ul>
-          </details>
-          {completed.profileApplied === false && (
-            <p className="settings-error" role="alert">
-              Saved games were processed, but the profile could not be applied.
-            </p>
-          )}
-          {completed.profileApplied === true && (
-            <p className="settings-success" role="status">Profile applied</p>
-          )}
-          <div className="settings-modal-actions">
-            <button
-              autoFocus
-              data-modal-initial-focus
-              onClick={() => {
-                if (completed.summary.refreshFailed) {
-                  globalThis.location.reload();
-                  return;
-                }
-                setCompleted(null);
-                restoreFocus(importButtonRef);
-              }}
-              type="button"
-            >
-              {completed.summary.refreshFailed
-                ? "Reload BlissHack"
-                : completed.profileApplied === true
-                ? "Close"
-                : "Keep Current Profile"}
-            </button>
-            <button
-              className="settings-primary"
-              disabled={
-                completed.profileApplied === true
-                || profileDifferenceCount(
-                  profile,
-                  completed.preview.source.profile,
-                ) === 0
-              }
-              onClick={applyImportedProfile}
-              type="button"
-            >
-              Apply Profile
-            </button>
-          </div>
-        </Modal>
+        <BackupImportResultsDialog
+          completed={completed}
+          onApplyProfile={() => void applyImportedProfile()}
+          onClose={() => {
+            if (completed.summary.refreshFailed) {
+              globalThis.location.reload();
+              return;
+            }
+            setCompleted(null);
+          }}
+          profile={profile}
+          returnFocusRef={importButtonRef}
+        />
       )}
 
       {clearOpen && (
-        <Modal
-          alert
-          label="Clear local data"
-          onCancel={pending ? undefined : () => {
+        <ClearLocalDataDialog
+          diagnosticCount={clearDiagnosticCount}
+          errorMessage={
+            error?.source === "clear" || error?.source === "backup-export"
+              ? error.message
+              : undefined
+          }
+          errorSource={
+            error?.source === "clear" || error?.source === "backup-export"
+              ? error.source
+              : undefined
+          }
+          onCancel={() => {
             setClearOpen(false);
             setClearText("");
-            restoreFocus(clearButtonRef);
           }}
-        >
-          <h2>Clear local data</h2>
-          {(error?.source === "clear" || error?.source === "backup-export") && (
-            <p className="settings-error" id="data-operation-error" role="alert">
-              {error.message}
-            </p>
-          )}
-          <p>
-            This deletes {saveCount} saved games, {profilePresent
-              ? "the saved profile"
-              : "no saved profile"}, and {clearDiagnosticCount} diagnostic events.
-          </p>
-          <button
-            aria-describedby={
-              error?.source === "backup-export"
-                ? "data-operation-error"
-                : undefined
-            }
-            disabled={pending}
-            onClick={() => void exportBackup()}
-            type="button"
-          >
-            <Archive aria-hidden="true" size={17} />
-            Export Full Backup
-          </button>
-          <label className="settings-clear-confirmation">
-            <span>Type {CLEAR_CONFIRMATION} to continue</span>
-            <input
-              aria-describedby={
-                error?.source === "clear"
-                  ? "data-operation-error"
-                  : undefined
-              }
-              autoFocus
-              data-modal-initial-focus
-              disabled={pending}
-              onChange={(event) => setClearText(event.currentTarget.value)}
-              value={clearText}
-            />
-          </label>
-          <div className="settings-modal-actions">
-            <button
-              disabled={pending}
-              onClick={() => {
-                setClearOpen(false);
-                setClearText("");
-                restoreFocus(clearButtonRef);
-              }}
-              type="button"
-            >
-              Cancel
-            </button>
-            <button
-              aria-describedby={
-                error?.source === "clear"
-                  ? "data-operation-error"
-                  : undefined
-              }
-              className="settings-danger"
-              disabled={pending || clearText !== CLEAR_CONFIRMATION}
-              onClick={() => void clearLocalData()}
-              type="button"
-            >
-              Clear
-            </button>
-          </div>
-        </Modal>
+          onClear={() => void clearLocalData()}
+          onExport={() => void exportBackup()}
+          onTextChange={setClearText}
+          pending={pending}
+          profilePresent={profilePresent}
+          returnFocusRef={clearButtonRef}
+          saveCount={saveCount}
+          text={clearText}
+        />
       )}
     </>
   );
-}
-
-/** Render a portal-backed modal with initial focus and a keyboard focus loop. */
-function Modal({
-  alert = false,
-  children,
-  label,
-  onCancel,
-}: {
-  alert?: boolean;
-  children: ReactNode;
-  label: string;
-  onCancel?: () => void;
-}) {
-  const ref = useRef<HTMLElement>(null);
-  const onCancelRef = useRef(onCancel);
-  useEffect(() => {
-    onCancelRef.current = onCancel;
-  }, [onCancel]);
-  useEffect(() => {
-    const modal = ref.current;
-    if (!modal) return undefined;
-    const settingsScreen = document.querySelector<HTMLElement>(
-      ".settings-screen",
-    );
-    if (settingsScreen) settingsScreen.inert = true;
-    const initial = modal.querySelector<HTMLElement>("[data-modal-initial-focus]")
-      ?? modal.querySelector<HTMLElement>("button, input, select, textarea");
-    initial?.focus();
-
-    function containFocus(event: KeyboardEvent): void {
-      if (event.key === "Escape" && onCancelRef.current) {
-        event.preventDefault();
-        event.stopPropagation();
-        onCancelRef.current();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const focusable = modal
-        ? Array.from(modal.querySelectorAll<HTMLElement>(
-          "button:not([disabled]), input:not([disabled]), select:not([disabled]), "
-            + "textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
-        ))
-        : [];
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable.at(-1) as HTMLElement;
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    }
-    modal.addEventListener("keydown", containFocus);
-    return () => {
-      modal.removeEventListener("keydown", containFocus);
-      if (settingsScreen) settingsScreen.inert = false;
-    };
-  }, []);
-
-  const modal = (
-    <div className="settings-modal-backdrop">
-      <section
-        aria-label={label}
-        aria-modal="true"
-        className="settings-modal settings-data-modal"
-        ref={ref}
-        role={alert ? "alertdialog" : "dialog"}
-      >
-        {children}
-      </section>
-    </div>
-  );
-  return typeof document === "undefined"
-    ? modal
-    : createPortal(modal, document.body);
 }
 
 /** Convert the persistence adapter state into concise player-facing text. */
@@ -712,54 +438,6 @@ function persistenceLabel(status: PersistenceStatus): string {
     case "error":
       return "Could not check persistent storage";
   }
-}
-
-/** Explain how one backup save will be handled by the current build. */
-function classificationLabel(
-  classification: BackupImportPreview["entries"][number]["classification"],
-): string {
-  switch (classification) {
-    case "importable":
-      return "Ready to import";
-    case "conflict":
-      return "Existing save; select to overwrite";
-    case "incompatible":
-      return "Incompatible; will be skipped";
-    case "damaged":
-      return "Damaged or unrecognized; will fail";
-  }
-}
-
-/** Count normalized profile fields which would change on import. */
-function profileDifferenceCount(
-  current: BlissHackProfileV1,
-  incoming: BlissHackProfileV1,
-): number {
-  return diffProfiles(current, incoming).length;
-}
-
-/** Format a validated UTC timestamp in the player's current locale. */
-function formatTime(value: string): string {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
-
-/** Format one per-save import result without exposing raw data. */
-function resultLabel(
-  status: BackupImportSummary["results"][number]["status"],
-  reason: BackupImportSummary["results"][number]["reason"],
-): string {
-  const reasonText: Record<typeof reason, string> = {
-    created: "created",
-    overwritten: "overwritten",
-    incompatible: "incompatible with this build",
-    "conflict-not-overwritten": "existing save kept",
-    damaged: "damaged or unrecognized",
-    "write-failed": "write failed",
-  };
-  return `${status}: ${reasonText[reason]}`;
 }
 
 /** Download one fully constructed backup JSON document. */
