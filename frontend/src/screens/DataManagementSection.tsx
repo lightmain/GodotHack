@@ -249,110 +249,41 @@ export function DataManagementSection({
 
   return (
     <>
-      <section className="settings-section" aria-labelledby="data-title">
-        <header>
-          <h2 id="data-title">Data</h2>
-        </header>
-        <div className="settings-data-content">
-          {dirty && (
-            <p className="settings-warning" role="status">
-              Apply or cancel unsaved settings before managing local data.
-            </p>
-          )}
-          {error
+      <DataManagementControls
+        blocked={blocked}
+        clearButtonRef={clearButtonRef}
+        dirty={dirty}
+        errorMessage={
+          error
             && !(preview && error.source === "backup-import")
             && !(clearOpen
               && (error.source === "clear" || error.source === "backup-export"))
-            && (
-            <p className="settings-error" id="data-operation-error" role="alert">
-              {error.message}
-            </p>
-            )}
-          <div className="settings-data-status">
-            <Database aria-hidden="true" size={18} />
-            <span>{persistenceLabel(persistence)}</span>
-            {persistence === "not-persistent" && (
-              <button
-                disabled={pending}
-                onClick={() => void requestPersistence()}
-                type="button"
-              >
-                <ShieldCheck aria-hidden="true" size={17} />
-                Protect Local Data
-              </button>
-            )}
-          </div>
-          <p className="settings-data-note">
-            Browser protection reduces automatic removal under storage pressure.
-            Clearing site data, deleting this browser profile, or changing site
-            origin still removes access to local data.
-          </p>
-          <div className="settings-profile-actions">
-            <button
-              aria-describedby={
-                error?.source === "backup-export"
-                  ? "data-operation-error"
-                  : undefined
-              }
-              disabled={blocked}
-              onClick={() => void exportBackup()}
-              ref={exportRef}
-              type="button"
-            >
-              <Download aria-hidden="true" size={17} />
-              Export Full Backup
-            </button>
-            <button
-              aria-describedby={
-                error?.source === "backup-import"
-                  ? "data-operation-error"
-                  : undefined
-              }
-              disabled={blocked}
-              onClick={() => importRef.current?.click()}
-              ref={importButtonRef}
-              type="button"
-            >
-              <Upload aria-hidden="true" size={17} />
-              Import Full Backup
-            </button>
-            <input
-              accept=".bhbackup,application/json"
-              aria-describedby={
-                error?.source === "backup-import"
-                  ? "data-operation-error"
-                  : undefined
-              }
-              aria-invalid={error?.source === "backup-import" || undefined}
-              aria-label="Import full backup file"
-              className="settings-file-input"
-              disabled={blocked}
-              onChange={(event) => void readBackup(event)}
-              ref={importRef}
-              type="file"
-            />
-            <button
-              aria-describedby={
-                error?.source === "clear"
-                  ? "data-operation-error"
-                  : undefined
-              }
-              className="settings-danger"
-              disabled={blocked}
-              onClick={() => {
-                setClearText("");
-                setClearDiagnosticCount(getDiagnosticCount());
-                setClearOpen(true);
-              }}
-              ref={clearButtonRef}
-              type="button"
-            >
-              <Trash2 aria-hidden="true" size={17} />
-              Clear Local Data
-            </button>
-          </div>
-        </div>
-      </section>
+            ? error.message
+            : undefined
+        }
+        errorSource={
+          error
+            && !(preview && error.source === "backup-import")
+            && !(clearOpen
+              && (error.source === "clear" || error.source === "backup-export"))
+            ? error.source
+            : undefined
+        }
+        exportButtonRef={exportRef}
+        importButtonRef={importButtonRef}
+        importInputRef={importRef}
+        onClear={() => {
+          setClearText("");
+          setClearDiagnosticCount(getDiagnosticCount());
+          setClearOpen(true);
+        }}
+        onExport={() => void exportBackup()}
+        onImport={(event) => void readBackup(event)}
+        onRequestImport={() => importRef.current?.click()}
+        onRequestPersistence={() => void requestPersistence()}
+        pending={pending}
+        persistence={persistence}
+      />
 
       {preview && (
         <BackupPreviewDialog
@@ -422,22 +353,6 @@ export function DataManagementSection({
       )}
     </>
   );
-}
-
-/** Convert the persistence adapter state into concise player-facing text. */
-function persistenceLabel(status: PersistenceStatus): string {
-  switch (status) {
-    case "checking":
-      return "Checking browser storage protection";
-    case "persistent":
-      return "Protected by browser";
-    case "not-persistent":
-      return "Not protected by browser";
-    case "unsupported":
-      return "Persistent storage is not supported";
-    case "error":
-      return "Could not check persistent storage";
-  }
 }
 
 /** Download one fully constructed backup JSON document. */
