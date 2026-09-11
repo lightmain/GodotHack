@@ -21,7 +21,11 @@ frontend. These changes are documented in
 
 ## Project Status
 
-**prealpha-2 is complete and prealpha-3 is in development.**
+**prealpha-2 is complete and prealpha-3 is in final polish.**
+
+prealpha-4 is planned as a smaller, refactoring-only milestone. It will add no
+player-facing features and will focus on splitting large frontend files,
+clarifying module ownership, and reducing the context needed for future changes.
 
 The current milestone provides:
 
@@ -113,6 +117,7 @@ and raw save transfer before a release.
 - [prealpha-1 plan](doc/BlissHack/plans/prealpha-1.md)
 - [prealpha-2 plan](doc/BlissHack/plans/prealpha-2.md)
 - [prealpha-3 plan](doc/BlissHack/plans/prealpha-3.md)
+- [prealpha-4 refactoring plan](doc/BlissHack/plans/prealpha-4.md)
 - [Upstream modification inventory](doc/BlissHack/upstream-modifications.md)
 - [Fatal errors and diagnostic log design](doc/BlissHack/plans/in-prealpha-2/fatal-errors-and-diagnostics.md)
 - [Browser end-to-end test design](doc/BlissHack/plans/in-prealpha-2/browser-end-to-end-tests.md)

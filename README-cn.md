@@ -18,7 +18,10 @@ BlissHack 对 NetHack C 代码进行了少量有针对性的修改，主要用�
 
 ## 项目状态
 
-**prealpha-2 已完成，prealpha-3 正在开发。**
+**prealpha-2 已完成，prealpha-3 正在收尾。**
+
+prealpha-4 已规划为一个范围较小的纯代码重构版本，不增加玩家功能，主要拆分
+前端大文件、明确模块职责，并降低后续开发和 Agent 修改所需的上下文。
 
 当前里程碑已经实现：
 
@@ -106,6 +109,7 @@ npm run test:long
 - [prealpha-1 计划](doc/BlissHack/plans/prealpha-1.md)
 - [prealpha-2 计划](doc/BlissHack/plans/prealpha-2.md)
 - [prealpha-3 计划](doc/BlissHack/plans/prealpha-3.md)
+- [prealpha-4 代码重构计划](doc/BlissHack/plans/prealpha-4.md)
 - [prealpha-3 发布验收](doc/BlissHack/plans/in-prealpha-3/release-acceptance.md)
 - [上游修改清单](doc/BlissHack/upstream-modifications.md)
 - [存档存储与读取方案评审](doc/BlissHack/plans/in-prealpha-2/save-format-review.md)
