@@ -234,6 +234,23 @@ frontend/src/screens/game/
 - 暂停、Settings、Save and Exit 和永久背包焦点行为不变。
 - GameScreen 单元测试、输入测试和相关浏览器流程通过。
 
+### 7.4 实施结果
+
+阶段三于 2026-09-11 在长期 `prealpha-4` 分支完成：
+
+- `GameScreen.tsx` 从 1193 行缩减到 275 行，只保留 runtime settings 同步、
+  顶层键盘路由、暂停状态、profile 持久化接线和页面组合。
+- `PauseOverlay.tsx` 独立负责暂停界面及 Esc 恢复。
+- `GameModals.tsx` 独立负责 text/history、menu 和 extended command overlay；
+  原有菜单局部状态、键盘监听、选择算法和 memo 边界保持不变。
+- `GameTerminal.tsx` 独立负责消息、地图、输入和永久背包，并让地图
+  `ResizeObserver` 与滚动 ref 继续由 `MapGrid` 内部持有。
+- `StatusArea.tsx` 独立负责状态行、HP bar 和 condition bit 展示。
+- 子组件接收各自所需字段，没有把整个 `GameSnapshot` 作为万能 prop 下传。
+- 重构前后的 Vite 生产 JS/CSS 产物内容 hash 均保持不变。
+- `npm run lint`、407 个单元测试、性能测试、`npm run build`、35 个
+  Chromium 浏览器测试及 12 个 Firefox/WebKit 基础测试全部通过。
+
 ## 8. 阶段四：NetHack bridge
 
 ### 8.1 目标结构
