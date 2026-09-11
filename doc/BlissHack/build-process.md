@@ -149,11 +149,14 @@ frontend/
     nethack.js        ← 从 src/targets/ 复制过来的 Emscripten 产物
     nethack.wasm      ← 同上
   src/
-    main.tsx          React 入口
-    App.tsx           主组件
-    nethack-bridge.ts 我们写的：加载 WASM 模块、注册 shim 回调、桥接游戏事件到 React
-    components/       UI 组件（地图、消息栏、状态栏等）
-    stores/           Zustand 状态管理
+    main.tsx              React 入口
+    App.tsx               应用状态与页面组合
+    nethack-bridge.ts     稳定 shim callback façade
+    bridge/               module loader、WASM 解码、输入控制和存档校验
+    session/              module/session 生命周期与 Home 数据操作
+    screens/game/         游戏终端、状态栏、modal 和暂停组件
+    screens/settings/     Settings 字段、数据操作和 modal 组件
+    styles/               按页面职责拆分的全局样式
   index.html
   package.json
   vite.config.ts
@@ -187,7 +190,7 @@ frontend/dist/
 ```
 浏览器加载 index.html
   → 加载 React 应用 (assets/index-[hash].js)
-    → nethack-bridge.ts 动态 import('nethack.js')
+    → bridge/emscripten-module.ts 动态 import('nethack.js')
       → nethack.js 自动 fetch('nethack.wasm') 并实例化
         → WASM 模块初始化，挂载 globalThis.nethackGlobal
           → 我们的 JS 回调被注册到 shim

@@ -21,11 +21,11 @@ frontend. These changes are documented in
 
 ## Project Status
 
-**prealpha-3 is complete and prealpha-4 is in development.**
+**prealpha-4 refactoring is complete.**
 
-prealpha-4 is a smaller, refactoring-only milestone. It will add no
-player-facing features and will focus on splitting large frontend files,
-clarifying module ownership, and reducing the context needed for future changes.
+prealpha-4 is a smaller, refactoring-only milestone. It adds no player-facing
+features. Large frontend files are now split by responsibility, public facades
+remain stable, and future changes require less unrelated context.
 
 The current milestone provides:
 
@@ -104,13 +104,16 @@ cd frontend
 npm test
 npm run lint
 npm run test:integration
+npm run test:integration:compat
+npm run test:performance
 npm run test:long
 ```
 
 The integration command exercises the real WASM callback chain and a production
 browser build, including startup, keyboard input, status rendering, save, and
-restore. The long suite repeatedly checks session lifecycle, save restoration,
-and raw save transfer before a release.
+restore. The compatibility suite covers critical Firefox and WebKit flows, the
+performance suite checks permanent-inventory rendering, and the long suite
+repeatedly checks session lifecycle, save restoration, and raw save transfer.
 
 ## Repository Guide
 

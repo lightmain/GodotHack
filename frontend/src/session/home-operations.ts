@@ -37,12 +37,6 @@ import type {
   SessionManagerContext,
 } from "./session-types";
 
-export type PreparedHomeOwner = ModuleRecord & {
-  module: NonNullable<ModuleRecord["module"]>;
-  storage: StorageService;
-  preparation: HomePreparation;
-};
-
 interface HomeOperationHooks {
   diagnosticErrorName(error: unknown): string;
   prepareModule(moduleId: string): Promise<HomePreparation>;

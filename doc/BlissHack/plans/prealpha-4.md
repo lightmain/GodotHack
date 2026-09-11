@@ -405,6 +405,34 @@ session-lifecycle.test.ts
 - session lifecycle 和 Home 数据操作可以分别阅读，但共享所有权仍由一个
   context 强制执行。
 
+### 10.1 实施结果
+
+收尾于 2026-09-11 在长期 `prealpha-4` 分支完成：
+
+| 原入口 | 基线 | 收尾结果 |
+|---|---:|---|
+| `App.css` | 2049 行 | 4 行固定导入；样式按 shared、Home、Settings、Game 拆分 |
+| `SettingsScreen.tsx` | 1071 行 | 497 行；字段、控件和 modal 位于 `screens/settings/` |
+| `GameScreen.tsx` | 1193 行 | 275 行；终端、状态、modal 和暂停位于 `screens/game/` |
+| `nethack-bridge.ts` | 1418 行 | 365 行 façade；loader、校验、解码和输入位于 `bridge/` |
+| `session-manager.ts` | 1699 行 | 14 行 façade；类型、Home 操作和 lifecycle 分离 |
+
+- 静态依赖图覆盖 59 个生产 TypeScript 模块，未发现相对导入循环。
+- 删除一个没有调用者的内部类型导出；其余内部导出均由 façade 或相邻职责模块
+  使用。
+- `frontend/README.md` 已从 Vite 模板替换为实际目录、运行时和测试说明；
+  `session-start.md` 与 `build-process.md` 已同步新的 bridge/session 入口。
+- 未修改 NetHack C、shim ABI、WASM 三件套、profile、backup、storage 或 save
+  格式。
+- `npm run lint`、407 个单元测试、真实 WASM 的 40 项检查、
+  `npm run build`、35 个 Chromium 浏览器测试、12 个 Firefox/WebKit
+  基础测试、性能测试及 4 个长流程测试全部通过。
+- 基础游玩覆盖新角色启动、移动、背包、扩展命令、暂停焦点和保存退出；控制台
+  与页面无错误，1280x900 视觉检查未发现空白或重叠。
+
+本地代码和文档收尾已完成。第 13 节中的部署条件仍需在本分支合入部署分支并
+push、GitHub Actions 成功后满足。
+
 ## 11. 提交和部署策略
 
 建议使用独立分支：
