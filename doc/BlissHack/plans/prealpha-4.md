@@ -281,11 +281,33 @@ frontend/src/bridge/
 
 ### 8.3 验收
 
-- 现有 bridge 的 49 个单元测试按新模块职责迁移并全部通过。
+- 现有 bridge 的 55 个黑盒契约测试继续从公开 façade 驱动并全部通过；不为
+  匹配内部文件结构而改测私有实现。
 - malformed callback 的安全返回值不变。
 - Asyncify 同一时刻仍只存在一个 pending action。
 - 永久背包更新仍不进入交互式 modal。
 - `npm run test:integration:wasm` 和完整浏览器测试通过。
+
+### 8.4 实施结果
+
+阶段四于 2026-09-11 在长期 `prealpha-4` 分支完成：
+
+- `nethack-bridge.ts` 从 1418 行缩减到 365 行，继续提供原有公开函数和类型，
+  并保留 callback 名称到领域操作的集中路由。
+- `emscripten-module.ts` 独立负责 Emscripten 类型、全局类型声明、环境准备和
+  module loader。
+- `save-validation.ts` 独立负责 save fingerprint、identity 解码和文件名校验。
+- `shim-decoders.ts` 独立负责参数、glyph、menu、status 和 extcmdlist 的
+  WASM32 内存读取；所有已验证偏移保持不变。
+- `input-controller.ts` 成为唯一持有 pending action、typeahead、保存自动确认、
+  已知存档名和 runtime settings queue 的模块级单例。
+- façade 本身不再持有可变状态；外部调用方仍只需导入
+  `nethack-bridge.ts`。
+- 55 个 bridge 黑盒契约测试保持在 façade 层，因为它们验证的是 callback
+  返回值、共享状态和跨模块协作；拆成内部实现测试反而会削弱兼容性证明。
+- `npm run lint`、407 个单元测试、真实 WASM 的 40 项检查、
+  `npm run build`、35 个 Chromium 浏览器测试、12 个 Firefox/WebKit
+  基础测试及 4 个长流程测试全部通过。
 
 ## 9. 阶段五：SessionManager
 
