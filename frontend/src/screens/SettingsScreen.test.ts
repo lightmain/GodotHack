@@ -37,15 +37,17 @@ describe("SettingsScreen", () => {
 
     expect(html).toContain('data-module-id="module-1"');
     expect(html).toMatch(/<h2[^>]*>Interface<\/h2>/);
+    expect(html).toMatch(/<h2[^>]*>Inventory<\/h2>/);
     expect(html).toMatch(/<h2[^>]*>NetHack<\/h2>/);
     expect(html).toMatch(/<h2[^>]*>Profile<\/h2>/);
     expect(html).toMatch(/<h2[^>]*>Data<\/h2>/);
     expect(html).toContain("Terminal font size");
     expect(html).toContain("Message history");
     expect(html).toContain("Follow player on the map");
-    expect(html).toContain("Inventory position");
+    expect(html).toContain("Status display");
+    expect(html).toContain("Preferred position");
     expect(html).not.toContain("Inventory width");
-    expect(html).toContain("Start inventory collapsed");
+    expect(html).toContain("Start collapsed");
     expect(html).toContain("Offer tutorial for new games");
     expect(html).toContain("Automatic pickup");
     expect(html).toContain("Pickup categories");
@@ -55,7 +57,7 @@ describe("SettingsScreen", () => {
     expect(html).toContain("Show experience");
     expect(html).toContain("Show turn count");
     expect(html).toContain("Permanent inventory");
-    expect(html).toContain("Inventory contents");
+    expect(html).toContain("Contents");
     expect(html).toContain("All except gold");
     expect(html).toContain("Full including gold");
     expect(html).toContain("Items in use");
@@ -73,7 +75,12 @@ describe("SettingsScreen", () => {
     expect(html).toMatch(/<input(?=[^>]*checked="")(?=[^>]*value="right")[^>]*>/);
     expect(labelMarkup(html, "Permanent inventory")).not.toContain("checked");
     expect(html).toContain('<option value="all" selected="">');
-    expect(labelMarkup(html, "Start inventory collapsed")).not.toContain("checked");
+    expect(labelMarkup(html, "Contents")).toContain("disabled");
+    expect(labelMarkup(html, "Start collapsed")).toContain("disabled");
+    expect(labelMarkup(html, "Start collapsed")).not.toContain("checked");
+    expect(html).toMatch(
+      /<input(?=[^>]*disabled="")(?=[^>]*value="right")[^>]*>/,
+    );
     expect(html).toContain("No unsaved changes");
     expect(buttonMarkup(html, "Apply")).toMatch(/\sdisabled(?:=""|>)/i);
   });
@@ -119,6 +126,6 @@ describe("SettingsScreen", () => {
     expect(html).not.toContain("Export Full Backup");
     expect(html).not.toContain("Clear Local Data");
     expect(html).toContain("Permanent inventory");
-    expect(html).toContain("Inventory contents");
+    expect(html).toContain("Contents");
   });
 });

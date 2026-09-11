@@ -316,7 +316,7 @@ async function setInventoryMode(
   const pause = page.getByRole("dialog", { name: "Game paused" });
   await expect(pause).toBeVisible();
   await page.getByRole("button", { name: "Settings" }).click();
-  await page.getByRole("combobox", { name: "Inventory contents" })
+  await page.getByRole("combobox", { name: "Contents" })
     .selectOption(mode);
   await page.getByRole("button", { name: "Apply" }).click();
   await expect(page.locator(".nh-shell")).toHaveAttribute(

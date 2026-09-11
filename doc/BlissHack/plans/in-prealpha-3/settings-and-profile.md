@@ -563,7 +563,8 @@ rc 由封闭类型生成，正常情况下不存在用户可制造的语法错�
 
 增加 Home 到独立 Settings screen 的状态和 UI：
 
-- `Interface`、`NetHack`、`Profile` 三个区段。
+- 按玩家任务显示 `Interface`、`Inventory`、`NetHack` 和 `Profile` 区段，
+  不要求页面分组与 profile 的 `interface`、`nethack` 存储结构一致。
 - Apply、Cancel、Restore Defaults、Export Profile、Import Profile。
 - 离开未保存表单时确认。
 - 导入差异预览和确认。

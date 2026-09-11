@@ -292,7 +292,9 @@ perminv_mode
 - 游戏在主命令等待状态时，Esc 打开包含 `Resume`、`Settings` 和
   `Save and Exit` 的暂停界面；其他输入状态中的 Esc 保留 NetHack 原意。
 - Settings screen 使用一个页面表单，不把每个选项放进独立卡片。
-- 页面分为 `Interface`、`NetHack` 和 `Profile` 三个区段。
+- 页面按玩家任务分为 `Interface`、`Inventory`、`NetHack` 和 `Profile`
+  区段，Home Settings 另有 `Data` 区段；页面分组不改变字段在 profile 中的
+  `interface` 或 `nethack` 持久化所有权。
 - 布尔值使用开关，固定集合使用选择菜单，多选集合使用复选框。
 - 页面提供 `Apply`、`Cancel`、`Restore Defaults`、`Export Profile` 和
   `Import Profile`。

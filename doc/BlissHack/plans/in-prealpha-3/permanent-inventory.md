@@ -603,18 +603,24 @@ card。
 
 ## 10. Settings 集成
 
-`Interface` 区段增加：
+Settings 按玩家任务而不是 profile 的存储结构组织。新增独立的 `Inventory`
+区段，把以下字段放在同一个功能组中：
 
-- `Inventory position`：`Right` / `Below` segmented control。
-- `Start inventory collapsed`：toggle。
-
-这些控件始终可编辑，用于预先配置未来开启时的布局。`NetHack` 区段增加：
-
-- `Permanent inventory`：toggle。
-- `Inventory contents`：`All except gold` / `Full including gold` /
+- `Automatic pickup` 和 `Pickup categories`。
+- `Sort inventory`。
+- `Permanent inventory` 主开关。
+- `Contents`：`All except gold` / `Full including gold` /
   `Items in use` select。
+- `Preferred position`：`Right` / `Below` segmented control。
+- `Start collapsed`：toggle。
 
-mode select 在开关关闭时保留可编辑，避免关闭再开启时丢失选择。说明文字明确：
+后三项作为永久背包开关的从属控件显示。开关关闭时保留其当前值但禁用控件；
+重新开启后恢复原选择。字段的持久化所有权不随页面分组改变：
+`permInvent` 和 `perminvMode` 仍属于 `nethack`，位置和折叠状态仍属于
+`interface`。
+
+`showExperience` 和 `showTime` 在 `Interface` 区段的 `Status display` 子组
+显示，但继续作为 NetHack 配置持久化和同步。说明文字明确：
 
 - Home：新游戏和继续存档在下次 session 启动时生效。
 - 游戏内：下一安全命令边界生效。

@@ -726,6 +726,15 @@
   gap: 17px;
 }
 
+.settings-subsection,
+.settings-field.settings-subsection {
+  min-width: 0;
+  padding-top: 17px;
+  display: grid;
+  gap: 14px;
+  border-top: 1px solid #252b2e;
+}
+
 .settings-field {
   min-width: 0;
   margin: 0;
@@ -795,6 +804,12 @@
   outline-offset: -2px;
 }
 
+.settings-segments input:disabled + span {
+  background: #0d1011;
+  color: #687176;
+  cursor: not-allowed;
+}
+
 .settings-segments-compact {
   margin-bottom: 10px;
 }
@@ -845,10 +860,26 @@
   outline-offset: 2px;
 }
 
+.settings-toggle input:disabled {
+  cursor: not-allowed;
+}
+
 .settings-toggle-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 9px 28px;
+}
+
+.settings-dependent-fields {
+  margin-left: 7px;
+  padding-left: 15px;
+  display: grid;
+  gap: 15px;
+  border-left: 1px solid #30363a;
+}
+
+.settings-fields-disabled {
+  opacity: 0.62;
 }
 
 .settings-select {
@@ -869,6 +900,11 @@
 .settings-select select:focus-visible {
   outline: 2px solid #7ddc8c;
   outline-offset: 2px;
+}
+
+.settings-select select:disabled {
+  color: #687176;
+  cursor: not-allowed;
 }
 
 .settings-pickup-grid {

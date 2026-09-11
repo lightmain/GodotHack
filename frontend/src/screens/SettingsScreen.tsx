@@ -419,41 +419,33 @@ export function SettingsScreen({
                 updateInterface(setDraft, { followPlayer });
               }}
             />
-            <SegmentedField
-              label="Inventory position"
-              name="inventory-position"
-              onChange={(permanentInventoryPosition) => {
-                updateInterface(setDraft, { permanentInventoryPosition });
-              }}
-              options={[
-                { value: "right", label: "Right" },
-                { value: "below", label: "Below" },
-              ]}
-              value={draft.interface.permanentInventoryPosition}
-            />
-            <ToggleField
-              checked={draft.interface.permanentInventoryCollapsed}
-              label="Start inventory collapsed"
-              onChange={(permanentInventoryCollapsed) => {
-                updateInterface(setDraft, { permanentInventoryCollapsed });
-              }}
-            />
+            <fieldset className="settings-field settings-subsection">
+              <legend>Status display</legend>
+              <div className="settings-toggle-grid">
+                <ToggleField
+                  checked={draft.nethack.showExperience}
+                  label="Show experience"
+                  onChange={(showExperience) => {
+                    updateNetHack(setDraft, { showExperience });
+                  }}
+                />
+                <ToggleField
+                  checked={draft.nethack.showTime}
+                  label="Show turn count"
+                  onChange={(showTime) => {
+                    updateNetHack(setDraft, { showTime });
+                  }}
+                />
+              </div>
+            </fieldset>
           </div>
         </section>
 
-        <section className="settings-section" aria-labelledby="nethack-title">
+        <section className="settings-section" aria-labelledby="inventory-title">
           <header>
-            <h2 id="nethack-title">NetHack</h2>
-            <span>
-              {isGameSettings ? "Current game and future defaults" : "New-game defaults"}
-            </span>
+            <h2 id="inventory-title">Inventory</h2>
           </header>
           <div className="settings-fields">
-            <ToggleField
-              checked={draft.nethack.tutorial}
-              label="Offer tutorial for new games"
-              onChange={(tutorial) => updateNetHack(setDraft, { tutorial })}
-            />
             <ToggleField
               checked={draft.nethack.autopickup}
               label="Automatic pickup"
@@ -522,6 +514,80 @@ export function SettingsScreen({
                 </div>
               )}
             </fieldset>
+            <ToggleField
+              checked={draft.nethack.sortpack}
+              label="Sort inventory"
+              onChange={(sortpack) => updateNetHack(setDraft, { sortpack })}
+            />
+            <div className="settings-subsection">
+              <ToggleField
+                checked={draft.nethack.permInvent}
+                label="Permanent inventory"
+                onChange={(permInvent) => {
+                  updateNetHack(setDraft, { permInvent });
+                }}
+              />
+              <div
+                className={`settings-dependent-fields${
+                  draft.nethack.permInvent ? "" : " settings-fields-disabled"
+                }`}
+              >
+                <label className="settings-field settings-select">
+                  <span>Contents</span>
+                  <select
+                    disabled={!draft.nethack.permInvent}
+                    onChange={(event) => {
+                      updateNetHack(setDraft, {
+                        perminvMode: event.currentTarget.value as
+                          NetHackSettingsV1["perminvMode"],
+                      });
+                    }}
+                    value={draft.nethack.perminvMode}
+                  >
+                    <option value="all">All except gold</option>
+                    <option value="full">Full including gold</option>
+                    <option value="in-use">Items in use</option>
+                  </select>
+                </label>
+                <SegmentedField
+                  disabled={!draft.nethack.permInvent}
+                  label="Preferred position"
+                  name="inventory-position"
+                  onChange={(permanentInventoryPosition) => {
+                    updateInterface(setDraft, { permanentInventoryPosition });
+                  }}
+                  options={[
+                    { value: "right", label: "Right" },
+                    { value: "below", label: "Below" },
+                  ]}
+                  value={draft.interface.permanentInventoryPosition}
+                />
+                <ToggleField
+                  checked={draft.interface.permanentInventoryCollapsed}
+                  disabled={!draft.nethack.permInvent}
+                  label="Start collapsed"
+                  onChange={(permanentInventoryCollapsed) => {
+                    updateInterface(setDraft, { permanentInventoryCollapsed });
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="settings-section" aria-labelledby="nethack-title">
+          <header>
+            <h2 id="nethack-title">NetHack</h2>
+            <span>
+              {isGameSettings ? "Current game and future defaults" : "New-game defaults"}
+            </span>
+          </header>
+          <div className="settings-fields">
+            <ToggleField
+              checked={draft.nethack.tutorial}
+              label="Offer tutorial for new games"
+              onChange={(tutorial) => updateNetHack(setDraft, { tutorial })}
+            />
             <label className="settings-field settings-select">
               <span>Movement keys</span>
               <select
@@ -539,53 +605,11 @@ export function SettingsScreen({
                 ))}
               </select>
             </label>
-            <div className="settings-toggle-grid">
-              <ToggleField
-                checked={draft.nethack.safePet}
-                label="Protect peaceful pets"
-                onChange={(safePet) => updateNetHack(setDraft, { safePet })}
-              />
-              <ToggleField
-                checked={draft.nethack.sortpack}
-                label="Sort inventory"
-                onChange={(sortpack) => updateNetHack(setDraft, { sortpack })}
-              />
-              <ToggleField
-                checked={draft.nethack.showExperience}
-                label="Show experience"
-                onChange={(showExperience) => {
-                  updateNetHack(setDraft, { showExperience });
-                }}
-              />
-              <ToggleField
-                checked={draft.nethack.showTime}
-                label="Show turn count"
-                onChange={(showTime) => updateNetHack(setDraft, { showTime })}
-              />
-              <ToggleField
-                checked={draft.nethack.permInvent}
-                label="Permanent inventory"
-                onChange={(permInvent) => {
-                  updateNetHack(setDraft, { permInvent });
-                }}
-              />
-            </div>
-            <label className="settings-field settings-select">
-              <span>Inventory contents</span>
-              <select
-                onChange={(event) => {
-                  updateNetHack(setDraft, {
-                    perminvMode: event.currentTarget.value as
-                      NetHackSettingsV1["perminvMode"],
-                  });
-                }}
-                value={draft.nethack.perminvMode}
-              >
-                <option value="all">All except gold</option>
-                <option value="full">Full including gold</option>
-                <option value="in-use">Items in use</option>
-              </select>
-            </label>
+            <ToggleField
+              checked={draft.nethack.safePet}
+              label="Protect peaceful pets"
+              onChange={(safePet) => updateNetHack(setDraft, { safePet })}
+            />
           </div>
         </section>
 
@@ -742,12 +766,14 @@ export function SettingsScreen({
 }
 
 function SegmentedField<T extends string>({
+  disabled = false,
   label,
   name,
   onChange,
   options,
   value,
 }: {
+  disabled?: boolean;
   label: string;
   name: string;
   onChange(value: T): void;
@@ -762,6 +788,7 @@ function SegmentedField<T extends string>({
           <label key={option.value}>
             <input
               checked={value === option.value}
+              disabled={disabled}
               name={name}
               onChange={() => onChange(option.value)}
               type="radio"
@@ -777,10 +804,12 @@ function SegmentedField<T extends string>({
 
 function ToggleField({
   checked,
+  disabled = false,
   label,
   onChange,
 }: {
   checked: boolean;
+  disabled?: boolean;
   label: string;
   onChange(checked: boolean): void;
 }) {
@@ -789,6 +818,7 @@ function ToggleField({
       <span>{label}</span>
       <input
         checked={checked}
+        disabled={disabled}
         onChange={(event) => onChange(event.currentTarget.checked)}
         type="checkbox"
       />
