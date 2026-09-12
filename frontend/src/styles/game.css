@@ -169,9 +169,11 @@
 
 .permanent-inventory-header button:hover,
 .permanent-inventory-header button:focus-visible {
-  border-color: #5a6268;
-  background: #1b2023;
+  border-color: var(--action-border-hover);
+  background: transparent;
   color: #fff;
+  outline: 2px solid var(--action-primary);
+  outline-offset: 2px;
 }
 
 .permanent-inventory-header button svg {
@@ -405,15 +407,16 @@
 }
 
 .nh-pause-actions button {
+  box-sizing: border-box;
   min-height: 42px;
   padding: 8px 11px;
   display: flex;
   align-items: center;
   gap: 9px;
-  border: 1px solid #4a5257;
+  border: 1px solid var(--action-border);
   border-radius: 3px;
-  background: #15191b;
-  color: #f0f0e8;
+  background: transparent;
+  color: var(--action-text);
   font: inherit;
   text-align: left;
   cursor: pointer;
@@ -421,9 +424,10 @@
 
 .nh-pause-actions button:hover,
 .nh-pause-actions button:focus-visible {
-  border-color: #7ddc8c;
-  background: #19201c;
-  outline: 2px solid #7ddc8c;
+  border-color: var(--action-border-hover);
+  background: transparent;
+  color: #fff;
+  outline: 2px solid var(--action-primary);
   outline-offset: 2px;
 }
 
@@ -433,9 +437,28 @@
   cursor: wait;
 }
 
+.nh-pause-actions button:first-child {
+  padding: 7px 10px;
+  border: 2px solid var(--action-primary);
+  color: var(--action-primary);
+}
+
+.nh-pause-actions button:first-child:hover,
+.nh-pause-actions button:first-child:focus-visible {
+  border-color: var(--action-primary-hover);
+  color: var(--action-primary-hover);
+}
+
 .nh-pause-actions .nh-pause-save {
   border-color: #c69b36;
   color: #f0d783;
+}
+
+.nh-pause-actions .nh-pause-save:hover:not(:disabled),
+.nh-pause-actions .nh-pause-save:focus-visible {
+  border-color: #f0d783;
+  color: #ffcf5c;
+  outline-color: #f0d783;
 }
 
 .nh-pause-actions .nh-pause-save:disabled {
@@ -495,6 +518,13 @@
   cursor: pointer;
 }
 
+.nh-dialog > header button:hover,
+.nh-dialog > header button:focus-visible {
+  color: #fff;
+  outline: 2px solid var(--action-primary);
+  outline-offset: 2px;
+}
+
 .nh-text-dialog pre {
   margin: 0;
   padding: 12px;
@@ -536,12 +566,13 @@
 
 .nh-menu-item:hover,
 .nh-menu-item.focused {
-  border-color: #5a6268;
-  background: #1b2023;
+  border-color: var(--action-border-hover);
+  background: transparent;
 }
 
 .nh-menu-item.selected {
-  background: #17301f;
+  border-color: var(--action-primary);
+  background: transparent;
 }
 
 .nh-menu-glyph,
@@ -600,8 +631,8 @@
 
 .nh-extcmd-list button.focused,
 .nh-extcmd-list button:hover {
-  border-color: #5a6268;
-  background: #1b2023;
+  border-color: var(--action-border-hover);
+  background: transparent;
 }
 
 .nh-extcmd-list strong {

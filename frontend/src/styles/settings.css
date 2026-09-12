@@ -353,12 +353,13 @@
 .settings-profile-actions button,
 .settings-actions button,
 .settings-modal-actions button {
+  box-sizing: border-box;
   min-height: 36px;
   padding: 7px 11px;
-  border: 1px solid #5a6268;
+  border: 1px solid var(--action-border);
   border-radius: 3px;
-  background: #111416;
-  color: #f0f0e8;
+  background: transparent;
+  color: var(--action-text);
   font: inherit;
   cursor: pointer;
 }
@@ -370,8 +371,8 @@
 }
 
 .settings-profile-actions .settings-danger {
-  border-color: #934646;
-  color: #ff8b8b;
+  border-color: var(--action-danger);
+  color: var(--action-danger-hover);
 }
 
 .settings-data-content {
@@ -388,15 +389,16 @@
 
 .settings-data-status button,
 .settings-data-modal > button {
+  box-sizing: border-box;
   min-height: 34px;
   padding: 6px 10px;
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  border: 1px solid #5a6268;
+  border: 1px solid var(--action-border);
   border-radius: 3px;
-  background: #111416;
-  color: #f0f0e8;
+  background: transparent;
+  color: var(--action-text);
   font: inherit;
   cursor: pointer;
 }
@@ -519,16 +521,24 @@
 .settings-actions button:hover:not(:disabled),
 .settings-actions button:focus-visible,
 .settings-modal-actions button:hover:not(:disabled),
-.settings-modal-actions button:focus-visible {
-  border-color: #7ddc8c;
-  background: #19201c;
-  outline: 2px solid #7ddc8c;
+.settings-modal-actions button:focus-visible,
+.settings-data-status button:hover:not(:disabled),
+.settings-data-status button:focus-visible,
+.settings-data-modal > button:hover:not(:disabled),
+.settings-data-modal > button:focus-visible {
+  border-color: var(--action-border-hover);
+  background: transparent;
+  color: #fff;
+  outline: 2px solid var(--action-primary);
   outline-offset: 2px;
 }
 
 .settings-profile-actions button:disabled,
 .settings-actions button:disabled,
-.settings-modal-actions button:disabled {
+.settings-modal-actions button:disabled,
+.settings-data-status button:disabled,
+.settings-data-modal > button:disabled {
+  border-color: #30363a;
   color: #636b70;
   cursor: not-allowed;
 }
@@ -565,8 +575,17 @@
 
 .settings-actions .settings-apply,
 .settings-modal-actions .settings-primary {
-  border-color: #64c67a;
-  color: #fff;
+  padding: 6px 10px;
+  border: 2px solid var(--action-primary);
+  color: var(--action-primary);
+}
+
+.settings-actions .settings-apply:hover:not(:disabled),
+.settings-actions .settings-apply:focus-visible,
+.settings-modal-actions .settings-primary:hover:not(:disabled),
+.settings-modal-actions .settings-primary:focus-visible {
+  border-color: var(--action-primary-hover);
+  color: var(--action-primary-hover);
 }
 
 .settings-actions .settings-apply:disabled,
@@ -615,8 +634,17 @@
 }
 
 .settings-modal-actions .settings-danger {
-  border-color: #df5555;
-  color: #ff8b8b;
+  border-color: var(--action-danger);
+  color: var(--action-danger-hover);
+}
+
+.settings-profile-actions .settings-danger:hover:not(:disabled),
+.settings-profile-actions .settings-danger:focus-visible,
+.settings-modal-actions .settings-danger:hover:not(:disabled),
+.settings-modal-actions .settings-danger:focus-visible {
+  border-color: var(--action-danger-hover);
+  color: var(--action-danger-hover);
+  outline-color: var(--action-danger-hover);
 }
 
 .settings-import-meta {

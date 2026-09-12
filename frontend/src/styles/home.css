@@ -104,13 +104,15 @@
 
 .home-commands > button,
 .home-command-slot > button,
-.fatal-screen button {
+.fatal-screen button,
+.save-modal-actions button {
+  box-sizing: border-box;
   min-height: 46px;
   padding: 10px 14px;
-  border: 1px solid #5a6268;
+  border: 1px solid var(--action-border);
   border-radius: 3px;
-  background: #111416;
-  color: #f0f0e8;
+  background: transparent;
+  color: var(--action-text);
   font: inherit;
   letter-spacing: 0;
   text-align: left;
@@ -118,8 +120,9 @@
 }
 
 .home-commands > button:first-child {
-  border-color: #7ddc8c;
-  color: #fff;
+  padding: 9px 13px;
+  border: 2px solid var(--action-primary);
+  color: var(--action-primary);
 }
 
 .home-commands > button:hover:not(:disabled),
@@ -127,14 +130,25 @@
 .home-command-slot > button:hover:not(:disabled),
 .home-command-slot > button:focus-visible,
 .fatal-screen button:hover,
-.fatal-screen button:focus-visible {
-  background: #19201c;
-  outline: 2px solid #7ddc8c;
+.fatal-screen button:focus-visible,
+.save-modal-actions button:hover:not(:disabled),
+.save-modal-actions button:focus-visible {
+  border-color: var(--action-border-hover);
+  background: transparent;
+  color: #fff;
+  outline: 2px solid var(--action-primary);
   outline-offset: 2px;
 }
 
+.home-commands > button:first-child:hover:not(:disabled),
+.home-commands > button:first-child:focus-visible {
+  border-color: var(--action-primary-hover);
+  color: var(--action-primary-hover);
+}
+
 .home-commands > button:disabled,
-.home-command-slot > button:disabled {
+.home-command-slot > button:disabled,
+.save-modal-actions button:disabled {
   border-color: #292e31;
   color: #636b70;
   cursor: not-allowed;
@@ -274,6 +288,7 @@
 }
 
 .save-import-button {
+  box-sizing: border-box;
   width: 100%;
   min-height: 36px;
   padding: 7px 10px;
@@ -281,18 +296,19 @@
   align-items: center;
   justify-content: center;
   gap: 7px;
-  border: 1px solid #5a6268;
+  border: 1px solid var(--action-border);
   border-radius: 3px;
-  background: #15191b;
-  color: #f0f0e8;
+  background: transparent;
+  color: var(--action-text);
   cursor: pointer;
 }
 
 .save-import-button:hover:not(:disabled),
 .save-import-button:focus-visible {
-  border-color: #7ddc8c;
-  background: #19201c;
-  outline: 2px solid #7ddc8c;
+  border-color: var(--action-primary);
+  background: transparent;
+  color: #fff;
+  outline: 2px solid var(--action-primary);
   outline-offset: 2px;
 }
 
@@ -381,8 +397,8 @@
 
 .save-picker-choice:hover:not(:disabled),
 .save-picker-choice:focus-visible {
-  background: #19201c;
-  outline: 2px solid #7ddc8c;
+  background: transparent;
+  outline: 2px solid var(--action-primary);
   outline-offset: -2px;
 }
 
@@ -438,24 +454,24 @@
 
 .save-export-button:hover:not(:disabled),
 .save-export-button:focus-visible {
-  border-color: #66a9dc;
-  background: #2c78ae;
-  color: #fff;
+  border-color: #86c5f1;
+  background: transparent;
+  color: #86c5f1;
   outline: 2px solid #86c5f1;
   outline-offset: 2px;
 }
 
 .save-delete-button {
-  border: 1px solid #df5555;
-  color: #df5555;
+  border: 1px solid var(--action-danger);
+  color: var(--action-danger);
 }
 
 .save-delete-button:hover:not(:disabled),
 .save-delete-button:focus-visible {
-  border-color: #df5555;
-  background: #df5555;
-  color: #fff;
-  outline: 2px solid #ff8b8b;
+  border-color: var(--action-danger-hover);
+  background: transparent;
+  color: var(--action-danger-hover);
+  outline: 2px solid var(--action-danger-hover);
   outline-offset: 2px;
 }
 
@@ -575,18 +591,22 @@
 }
 
 .save-modal-actions button {
+  min-height: 36px;
   min-width: 88px;
+  padding: 7px 11px;
 }
 
 .save-modal-danger {
-  border-color: #df5555;
-  color: #ff8b8b;
+  border-color: var(--action-danger);
+  color: var(--action-danger-hover);
 }
 
 .save-modal-danger:hover:not(:disabled),
 .save-modal-danger:focus-visible {
-  background: #7d2525;
-  color: #fff;
+  border-color: var(--action-danger-hover);
+  background: transparent;
+  color: var(--action-danger-hover);
+  outline-color: var(--action-danger-hover);
 }
 
 @media (max-width: 700px) {

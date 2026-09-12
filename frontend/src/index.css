@@ -1,4 +1,11 @@
 :root {
+  --action-border: #5a6268;
+  --action-border-hover: #aeb6ba;
+  --action-danger: #df5555;
+  --action-danger-hover: #ff8b8b;
+  --action-primary: #7ddc8c;
+  --action-primary-hover: #8ee59e;
+  --action-text: #f0f0e8;
   color: #d8d8d2;
   background: #080a0b;
   font-synthesis: none;
