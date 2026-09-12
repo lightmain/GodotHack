@@ -131,7 +131,11 @@ test("renders and collapses the core permanent inventory without a modal", async
   await firstInventoryRow.hover();
   await expect(firstInventoryRow).toHaveCSS(
     "background-color",
-    "rgb(27, 32, 35)",
+    "rgba(0, 0, 0, 0)",
+  );
+  await expect(firstInventoryRow).toHaveCSS(
+    "border-color",
+    "rgb(174, 182, 186)",
   );
   await page.evaluate(() => {
     if (document.activeElement instanceof HTMLElement) {
